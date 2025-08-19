@@ -32,10 +32,13 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
+        cache: ''
         
-    - name: Install dependencies
+    - name: Clean and install dependencies
       run: |
+        rm -rf node_modules package*.json .npmrc
         npm init -y
+        npm pkg set type=module
         npm install playwright
         
     - name: Install Playwright browsers
@@ -45,6 +48,8 @@ jobs:
       run: |
         echo "Files in directory:"
         ls -la
+        echo "Package.json content:"
+        cat package.json
         echo "Running automation..."
         node creati-automation.mjs
       env:
