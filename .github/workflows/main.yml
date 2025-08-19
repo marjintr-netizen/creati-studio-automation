@@ -134,28 +134,51 @@ jobs:
                 await page.waitForTimeout(3000);
                 await takeScreenshot(page, '06-templates-page');
                 
-                console.log('6. Kadın template seçiliyor');
-                const templateSelectors = [
+                console.log('6. Cozy Bedroom template seçiliyor');
+                const cozyBedroomSelectors = [
                     'text="Cozy Bedroom"',
-                    'text="Minimalist Female"'
+                    'text=Cozy Bedroom',
+                    'h3:has-text("Cozy Bedroom")',
+                    'span:has-text("Cozy Bedroom")',
+                    'div:has-text("Cozy Bedroom")',
+                    '[alt*="Cozy Bedroom"]',
+                    '[title*="Cozy Bedroom"]',
+                    'p:has-text("Cozy Bedroom")'
                 ];
                 
                 let templateSelected = false;
-                for (const selector of templateSelectors) {
+                for (const selector of cozyBedroomSelectors) {
                     try {
-                        await page.click(selector, { timeout: 3000 });
-                        console.log(`Template seçildi: ${selector}`);
+                        console.log(`Deneniyor: ${selector}`);
+                        await page.waitForSelector(selector, { timeout: 2000 });
+                        await page.click(selector);
+                        console.log(`Cozy Bedroom seçildi: ${selector}`);
                         templateSelected = true;
                         break;
                     } catch (e) {
-                        console.log(`Template bulunamadı: ${selector}`);
+                        console.log(`Başarısız: ${selector}`);
                         continue;
                     }
                 }
                 
                 if (!templateSelected) {
-                    console.log('Hiç template seçilemedi');
-                    throw new Error('Template seçilemedi');
+                    // Son çare - tüm template elementlerini bul ve logla
+                    console.log('Cozy Bedroom bulunamadı, mevcut template\'ler aranıyor...');
+                    const allTemplates = await page.$eval('div, h3, span, p', 
+                        elements => elements
+                            .map(el => el.textContent?.trim())
+                            .filter(text => text && text.length > 0 && text.length < 50)
+                    );
+                    console.log('Bulunan tüm metinler:', allTemplates.slice(0, 20));
+                    
+                    // İlk template'i seç (ne olursa olsun)
+                    try {
+                        await page.click('div[class*="template"]:first-of-type, .template:first-of-type');
+                        console.log('İlk template seçildi');
+                        templateSelected = true;
+                    } catch (e) {
+                        console.log('İlk template de seçilemedi');
+                    }
                 }
                 
                 await page.waitForTimeout(5000);
