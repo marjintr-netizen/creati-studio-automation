@@ -41,7 +41,7 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install chromium
       
-   - name: Run Creati Studio automation
+    - name: Run Creati Studio automation
       run: |
         echo "Files in directory:"
         ls -la
