@@ -1,6 +1,6 @@
-const { chromium } = require('playwright');
-const https = require('https');
-const fs = require('fs');
+import { chromium } from 'playwright';
+import https from 'https';
+import fs from 'fs';
 
 // Environment variables'dan verileri al
 const email = process.env.EMAIL;
@@ -85,7 +85,6 @@ async function createVideo() {
             await downloadImage(productImageUrl, tempImagePath);
             console.log('Görsel indirildi');
             
-            // Upload butonunu ara
             const uploadSelectors = [
                 'button:has-text("Upload product image")',
                 'text=Upload product image',
@@ -159,4 +158,4 @@ async function createVideo() {
     }
 }
 
-createVideo();
+await createVideo();
