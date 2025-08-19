@@ -41,12 +41,12 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install chromium
       
-    - name: Run Creati Studio automation
-     run: |
-   echo "Files in directory:"
-   ls -la
-   echo "Running automation..."
-   node creati-automation.js
+   - name: Run Creati Studio automation
+      run: |
+        echo "Files in directory:"
+        ls -la
+        echo "Running automation..."
+        node creati-automation.js
       env:
         EMAIL: ${{ github.event.inputs.email }}
         PASSWORD: ${{ github.event.inputs.password }}
