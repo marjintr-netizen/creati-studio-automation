@@ -1,0 +1,50 @@
+name: Creati Studio Video Creator
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Creati Studio Email'
+        required: true
+        type: string
+      password:
+        description: 'Creati Studio Password'
+        required: true
+        type: string
+      productDescription:
+        description: 'Product Description'
+        required: true
+        type: string
+      productImageUrl:
+        description: 'Product Image URL'
+        required: true
+        type: string
+
+jobs:
+  create-video:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: |
+        npm init -y
+        npm install playwright
+        
+    - name: Install Playwright browsers
+      run: npx playwright install chromium
+      
+    - name: Run Creati Studio automation
+      run: node creati-automation.js
+      env:
+        EMAIL: ${{ github.event.inputs.email }}
+        PASSWORD: ${{ github.event.inputs.password }}
+        DESCRIPTION: ${{ github.event.inputs.productDescription }}
+        IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
