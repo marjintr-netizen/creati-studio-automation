@@ -43,7 +43,7 @@ jobs:
       run: npx playwright install chromium
       
     - name: Run automation
-      run: node automation.mjs
+      run: node creati-automation.mjs
       env:
         EMAIL: ${{ github.event.inputs.email }}
         PASSWORD: ${{ github.event.inputs.password }}
