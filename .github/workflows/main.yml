@@ -134,8 +134,30 @@ jobs:
                 await page.waitForTimeout(3000);
                 await takeScreenshot(page, '06-templates-page');
                 
-                console.log('6. Cozy Bedroom şablonu seçiliyor');
-                await page.click('text=Cozy Bedroom');
+                console.log('6. Kadın template seçiliyor');
+                const templateSelectors = [
+                    'text="Cozy Bedroom"',
+                    'text="Minimalist Female"'
+                ];
+                
+                let templateSelected = false;
+                for (const selector of templateSelectors) {
+                    try {
+                        await page.click(selector, { timeout: 3000 });
+                        console.log(`Template seçildi: ${selector}`);
+                        templateSelected = true;
+                        break;
+                    } catch (e) {
+                        console.log(`Template bulunamadı: ${selector}`);
+                        continue;
+                    }
+                }
+                
+                if (!templateSelected) {
+                    console.log('Hiç template seçilemedi');
+                    throw new Error('Template seçilemedi');
+                }
+                
                 await page.waitForTimeout(5000);
                 await takeScreenshot(page, '07-selected-template');
                 
