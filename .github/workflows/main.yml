@@ -143,11 +143,43 @@ jobs:
                     if (fileInput) {
                         await fileInput.setInputFiles(tempImagePath);
                         console.log('Dosya upload edildi');
+                        
+                        // Upload edilen görsele çift tıkla
+                        await page.waitForTimeout(3000);
+                        const uploadedImageSelectors = [
+                            'img[src*="blob:"]',
+                            'img[src*="data:"]', 
+                            '.uploaded-image',
+                            '.preview-image',
+                            '.image-preview img',
+                            'img[alt*="upload"]'
+                        ];
+                        
+                        let imageClicked = false;
+                        for (const selector of uploadedImageSelectors) {
+                            try {
+                                const uploadedImage = await page.$(selector);
+                                if (uploadedImage) {
+                                    await uploadedImage.dblclick();
+                                    console.log(`Görsele çift tıklandı: ${selector}`);
+                                    imageClicked = true;
+                                    break;
+                                }
+                            } catch (e) {
+                                continue;
+                            }
+                        }
+                        
+                        if (!imageClicked) {
+                            console.log('Upload edilmiş görsel bulunamadı');
+                        }
                     }
                     
                 } catch (error) {
                     console.error('Upload hatası:', error);
                 }
+                
+                await page.waitForTimeout(3000);
                 
                 console.log('8. Script alanı dolduruluyor');
                 const scriptSelectors = [
@@ -171,13 +203,15 @@ jobs:
                 const continueSelectors = [
                     'button:has-text("Continue")',
                     'button:has-text("Generate")',
-                    'button:has-text("Create video")'
+                    'button:has-text("Create video")',
+                    'button:has-text("Generate video")',
+                    'button:has-text("Start generation")'
                 ];
                 
                 for (const selector of continueSelectors) {
                     try {
                         await page.click(selector, { timeout: 5000 });
-                        console.log('Video oluşturma başlatıldı');
+                        console.log(`Video oluşturma başlatıldı: ${selector}`);
                         break;
                     } catch (e) {
                         continue;
