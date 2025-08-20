@@ -10,7 +10,6 @@ const productImageUrl = process.env.IMAGE_URL;
 
 console.log('Creati Studio automation başlatılıyor...');
 
-// Hata ayıklama için ekran görüntüsü alma fonksiyonu
 async function takeScreenshot(page, name) {
     try {
         await page.screenshot({ path: `debug-${name}.png`, fullPage: true });
@@ -20,9 +19,7 @@ async function takeScreenshot(page, name) {
     }
 }
 
-// Görseli URL'den indirme fonksiyonu
 function downloadImage(url, filepath) {
-    // ... (Bu fonksiyon değişmedi, olduğu gibi kalabilir) ...
     return new Promise((resolve, reject) => {
         https.get(url, (response) => {
             if (response.statusCode !== 200) {
@@ -55,7 +52,8 @@ async function createVideo() {
     const page = await context.newPage();
     await page.setViewportSize({ width: 1920, height: 1080 });
     
-    page.setDefaultTimeout(30000);
+    // Genel zaman aşımını biraz daha artıralım
+    page.setDefaultTimeout(40000);
 
     try {
         // 1. LOGIN İŞLEMİ
@@ -64,15 +62,17 @@ async function createVideo() {
         await takeScreenshot(page, '01-login-page-loaded');
         console.log('Login sayfası yüklendi.');
 
-        // --- KESİN ÇÖZÜM: DAHA GÜÇLÜ BİR SEÇİCİ KULLANMAK ---
-        console.log('"Continue with email" butonu aranıyor...');
-        // Playwright'in önerdiği en sağlam yöntem: Rolü "button" ve adı (içindeki metin)
-        // "Continue with email" olan elementi bul. "/.../i" büyük/küçük harf duyarsız arama yapar.
+        // --- SON ÇÖZÜM: ZORLA BEKLEME VE TIKLAMA ---
+        console.log('Sayfanın tam oturması için 3 saniye bekleniyor...');
+        await page.waitForTimeout(3000); // 3 saniye bekleme ekliyoruz
+
+        console.log('"Continue with email" butonu aranıyor ve zorla tıklanacak...');
         const continueWithEmailButton = page.getByRole('button', { name: /Continue with email/i });
         
-        // Elementin tıklanabilir ve görünür olmasını bekle
-        await continueWithEmailButton.waitFor({ state: 'visible' });
-        await continueWithEmailButton.click();
+        // force: true parametresi, Playwright'in normalde yaptığı "tıklanabilir mi?"
+        // kontrollerini atlayarak doğrudan tıklamasını sağlar.
+        await continueWithEmailButton.click({ force: true, timeout: 10000 });
+        
         console.log('"Continue with email" butonuna tıklandı.');
         await takeScreenshot(page, '01b-after-continue-click');
         
@@ -86,7 +86,8 @@ async function createVideo() {
         await page.locator('input[type="password"]').fill(password);
         await takeScreenshot(page, '02-login-filled');
 
-        await page.locator('button:has-text("LOG IN/SIGN UP")').click();
+        // Bu butonu da daha sağlam bir seçici ile bulalım
+        await page.getByRole('button', { name: /LOG IN\/SIGN UP/i }).click();
         console.log('Login butonu tıklandı');
 
         await page.waitForSelector('text=Home', { timeout: 20000 });
@@ -109,14 +110,12 @@ async function createVideo() {
         console.log('Görsel başarıyla indirildi:', tempImagePath);
 
         const fileChooserPromise = page.waitForEvent('filechooser');
-        await page.locator('button:has-text("Upload product image")').click();
+        await page.getByRole('button', { name: 'Upload product image' }).click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(tempImagePath);
         console.log('Dosya seçme penceresi açıldı ve görsel seçildi');
 
-        const gotItButton = page.locator('button:has-text("Got it!")');
-        await gotItButton.waitFor({ state: 'visible', timeout: 20000 });
-        await gotItButton.click();
+        await page.getByRole('button', { name: 'Got it!' }).click();
         console.log('Görsel yüklendi ve popup kapatıldı');
         await takeScreenshot(page, '05-after-upload');
         
@@ -135,9 +134,7 @@ async function createVideo() {
         await takeScreenshot(page, '07-after-language');
 
         console.log('6. Video oluşturma başlatılıyor');
-        const continueButton = page.locator('button:has-text("Continue")');
-        await continueButton.waitFor({ state: 'enabled' });
-        await continueButton.click();
+        await page.getByRole('button', { name: 'Continue' }).click();
         console.log('Continue butonuna tıklandı');
         
         await page.waitForURL('**/history/**', { timeout: 60000 });
