@@ -1,61 +1,88 @@
+# Workflow'un adı
 name: Creati Studio Video Creator
 
+# Workflow'un ne zaman tetikleneceğini belirler.
+# workflow_dispatch: GitHub arayüzünden manuel olarak "Run workflow" butonuyla çalıştırılmasını sağlar.
 on:
   workflow_dispatch:
+    # Manuel çalıştırma sırasında kullanıcıdan istenecek girdiler
     inputs:
       email:
         description: 'Creati Studio Email'
         required: true
+        type: string
+      # GÜVENLİK İYİLEŞTİRMESİ: Şifre gibi hassas bilgileri buradan almak yerine
+      # GitHub Secrets kullanmak çok daha güvenlidir. Bu alanı kaldırıp
+      # aşağıdaki 'env' bölümünde ${{ secrets.CREATI_STUDIO_PASSWORD }} kullanabilirsiniz.
+      # Secrets eklemek için: Repository > Settings > Secrets and variables > Actions
       password:
-        description: 'Creati Studio Password'
+        description: 'Creati Studio Password (Secrets kullanmanız önerilir)'
         required: true
       productDescription:
         description: 'Product Description'
         required: true
+        type: string
       productImageUrl:
         description: 'Product Image URL'
         required: true
+        type: string
 
+# Workflow'un içereceği işler (jobs)
 jobs:
   create-video:
+    # Job'un çalışacağı sanal makine tipi
     runs-on: ubuntu-latest
     
+    # Job'un adımları (steps)
     steps:
+    # 1. Adım: Kod reposunu sanal makineye indirir
     - name: Checkout repository
       uses: actions/checkout@v4
       
+    # 2. Adım: Node.js ortamını kurar
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '18' # Betiğinizle uyumlu bir Node.js versiyonu
         
+    # 3. Adım: Gerekli NPM paketlerini ve Playwright tarayıcısını kurar
     - name: Install Dependencies and Browser
       run: |
-        # Geçici bir package.json oluştur ve Playwright'i kur
+        # Geçici bir package.json oluşturup projenin bir Node.js projesi olduğunu belirtiyoruz
         npm init -y
+        # ES Modules (import/export) kullanabilmek için type=module ekliyoruz
         npm pkg set type=module
+        # Playwright'i kuruyoruz
         npm install playwright
         
-        # ANA DÜZELTME BURASI: --with-deps bayrağı, tarayıcının çalışması için 
+        # ANA DÜZELTME: --with-deps bayrağı, tarayıcının çalışması için 
         # gereken tüm sistem kütüphanelerini (fontlar, grafik kütüphaneleri vb.) kurar.
+        # Bu, GitHub Actions gibi arayüzü olmayan ortamlarda kritik öneme sahiptir.
         npx playwright install --with-deps chromium
       
+    # 4. Adım: Otomasyon betiğini çalıştırır
     - name: Run automation script
       run: node creati-automation.mjs
       env:
-        # ÖNEMLİ GÜVENLİK NOTU: Gerçek projelerde şifrenizi workflow_dispatch
-        # ile girmek yerine, GitHub Repository Secrets kısmına ekleyip
-        # `PASSWORD: ${{ secrets.YOUR_SECRET_NAME }}` olarak kullanmanız çok daha güvenlidir.
+        # workflow_dispatch ile alınan girdileri ortam değişkeni olarak betiğe aktarıyoruz
         EMAIL: ${{ github.event.inputs.email }}
         PASSWORD: ${{ github.event.inputs.password }}
+        # GÜVENLİK NOTU: Eğer şifrenizi "Secrets" olarak eklediyseniz, yukarıdaki satırı silip
+        # aşağıdaki satırı kullanın. (Önce secret oluşturmanız gerekir)
+        # PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
     
+    # 5. Adım: Hata ayıklama için oluşturulan ekran görüntülerini bir artifact olarak kaydeder
     - name: Upload debug screenshots
-      uses: actions/upload-artifact@v4
-      # 'always()' sayesinde script hata verse bile ekran görüntüleri yüklenir
+      # 'if: always()' ifadesi, önceki adımlar hata verse bile bu adımın her zaman çalışmasını sağlar.
+      # Bu sayede, hata anındaki ekran görüntüsünü her durumda alabiliriz.
       if: always()
+      uses: actions/upload-artifact@v4
       with:
+        # Artifact'in adı
         name: debug-screenshots
+        # Hangi dosyaların yükleneceği (tüm .png uzantılı dosyalar)
         path: "*.png"
-        retention-days: 1
+        # Artifact'in ne kadar süreyle saklanacağı
+        retention-days: 1```
