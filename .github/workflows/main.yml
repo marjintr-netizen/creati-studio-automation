@@ -28,20 +28,26 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm' # npm paketlerini cache'leyerek sonraki çalıştırmaları hızlandırır
         
-    - name: Install Dependencies and Browsers
+    - name: Install Dependencies and Browser
       run: |
-        # package-lock.json dosyasından hızlı ve tutarlı kurulum yapar
-        npm ci 
-        # ANA DÜZELTME: --with-deps bayrağı ile sistem bağımlılıklarını kurar
+        # Geçici bir package.json oluştur ve Playwright'i kur
+        npm init -y
+        npm pkg set type=module
+        npm install playwright
+        
+        # ANA DÜZELTME BURASI: --with-deps bayrağı, tarayıcının çalışması için 
+        # gereken tüm sistem kütüphanelerini (fontlar, grafik kütüphaneleri vb.) kurar.
         npx playwright install --with-deps chromium
       
     - name: Run automation script
       run: node creati-automation.mjs
       env:
+        # ÖNEMLİ GÜVENLİK NOTU: Gerçek projelerde şifrenizi workflow_dispatch
+        # ile girmek yerine, GitHub Repository Secrets kısmına ekleyip
+        # `PASSWORD: ${{ secrets.YOUR_SECRET_NAME }}` olarak kullanmanız çok daha güvenlidir.
         EMAIL: ${{ github.event.inputs.email }}
-        PASSWORD: ${{ secrets.PASSWORD }} # Güvenlik için şifreyi secret olarak saklamak daha iyidir
+        PASSWORD: ${{ github.event.inputs.password }}
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
     
