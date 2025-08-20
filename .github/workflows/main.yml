@@ -2,7 +2,6 @@
 name: Creati Studio Video Creator
 
 # Workflow'un ne zaman tetikleneceğini belirler.
-# workflow_dispatch: GitHub arayüzünden manuel olarak "Run workflow" butonuyla çalıştırılmasını sağlar.
 on:
   workflow_dispatch:
     # Manuel çalıştırma sırasında kullanıcıdan istenecek girdiler
@@ -11,13 +10,6 @@ on:
         description: 'Creati Studio Email'
         required: true
         type: string
-      # GÜVENLİK İYİLEŞTİRMESİ: Şifre gibi hassas bilgileri buradan almak yerine
-      # GitHub Secrets kullanmak çok daha güvenlidir. Bu alanı kaldırıp
-      # aşağıdaki 'env' bölümünde ${{ secrets.CREATI_STUDIO_PASSWORD }} kullanabilirsiniz.
-      # Secrets eklemek için: Repository > Settings > Secrets and variables > Actions
-      password:
-        description: 'Creati Studio Password (Secrets kullanmanız önerilir)'
-        required: true
       productDescription:
         description: 'Product Description'
         required: true
@@ -43,21 +35,15 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18' # Betiğinizle uyumlu bir Node.js versiyonu
+        node-version: '18'
         
     # 3. Adım: Gerekli NPM paketlerini ve Playwright tarayıcısını kurar
     - name: Install Dependencies and Browser
       run: |
-        # Geçici bir package.json oluşturup projenin bir Node.js projesi olduğunu belirtiyoruz
         npm init -y
-        # ES Modules (import/export) kullanabilmek için type=module ekliyoruz
         npm pkg set type=module
-        # Playwright'i kuruyoruz
         npm install playwright
-        
-        # ANA DÜZELTME: --with-deps bayrağı, tarayıcının çalışması için 
-        # gereken tüm sistem kütüphanelerini (fontlar, grafik kütüphaneleri vb.) kurar.
-        # Bu, GitHub Actions gibi arayüzü olmayan ortamlarda kritik öneme sahiptir.
+        # --with-deps bayrağı, GitHub Actions ortamı için gerekli tüm sistem kütüphanelerini kurar.
         npx playwright install --with-deps chromium
       
     # 4. Adım: Otomasyon betiğini çalıştırır
@@ -66,23 +52,19 @@ jobs:
       env:
         # workflow_dispatch ile alınan girdileri ortam değişkeni olarak betiğe aktarıyoruz
         EMAIL: ${{ github.event.inputs.email }}
-        PASSWORD: ${{ github.event.inputs.password }}
-        # GÜVENLİK NOTU: Eğer şifrenizi "Secrets" olarak eklediyseniz, yukarıdaki satırı silip
-        # aşağıdaki satırı kullanın. (Önce secret oluşturmanız gerekir)
-        # PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
+        # --- GÜVENLİK GÜNCELLEMESİ ---
+        # Şifre artık GitHub Secrets'tan güvenli bir şekilde alınıyor.
+        # Bu secret'ı reponuzun Ayarlar (Settings) kısmından eklemelisiniz.
+        PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
     
     # 5. Adım: Hata ayıklama için oluşturulan ekran görüntülerini bir artifact olarak kaydeder
     - name: Upload debug screenshots
-      # 'if: always()' ifadesi, önceki adımlar hata verse bile bu adımın her zaman çalışmasını sağlar.
-      # Bu sayede, hata anındaki ekran görüntüsünü her durumda alabiliriz.
+      # 'if: always()' sayesinde, önceki adımlar hata verse bile bu adım her zaman çalışır.
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        # Artifact'in adı
         name: debug-screenshots
-        # Hangi dosyaların yükleneceği (tüm .png uzantılı dosyalar)
         path: "*.png"
-        # Artifact'in ne kadar süreyle saklanacağı
-        retention-days: 1```
+        retention-days: 1
