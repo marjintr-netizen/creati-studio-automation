@@ -63,20 +63,15 @@ async function createVideo() {
         await takeScreenshot(page, '01-login-page-loaded');
         console.log('Login sayfası yüklendi.');
 
-        // --- YENİ GÜNCELLEME: Olası pop-up'ları veya çerez bildirimlerini kapatma ---
-        // Bu blok, butonu bulursa tıklar, bulamazsa hata vermeden devam eder.
-        try {
-            console.log('Olası pop-up veya çerez butonu kontrol ediliyor...');
-            // Web sitesindeki butonda yazabilecek yaygın metinleri arıyoruz.
-            const acceptButton = page.locator('button:has-text("Accept"), button:has-text("Got it"), button:has-text("Allow"), button:has-text("Kabul Et")').first();
-            await acceptButton.waitFor({ state: 'visible', timeout: 5000 }); // 5 saniye bekler, yoksa devam eder.
-            console.log('Pop-up butonu bulundu, tıklanıyor.');
-            await acceptButton.click();
-            await takeScreenshot(page, '01a-popup-closed');
-        } catch (e) {
-            console.log('Kapatılacak bir pop-up bulunamadı, devam ediliyor.');
-        }
-
+        // --- ANA DÜZELTME: "Continue with email" BUTONUNA TIKLAMA ---
+        console.log('"Continue with email" butonu aranıyor...');
+        const continueWithEmailButton = page.locator('button:has-text("Continue with email")');
+        await continueWithEmailButton.waitFor({ state: 'visible' });
+        await continueWithEmailButton.click();
+        console.log('"Continue with email" butonuna tıklandı.');
+        await takeScreenshot(page, '01b-after-continue-click');
+        
+        // Artık e-posta alanı görünür olmalı
         console.log('Email alanı bekleniyor...');
         const emailInput = page.locator('input[type="email"]');
         await emailInput.waitFor({ state: 'visible', timeout: 20000 });
@@ -152,7 +147,7 @@ async function createVideo() {
     } catch (error) {
         console.error('❌ Hata oluştu:', error);
         await takeScreenshot(page, 'error-state');
-        throw error; // Hatayı fırlatarak workflow'un başarısız olmasını sağlıyoruz
+        throw error;
     } finally {
         await browser.close();
         console.log('Browser kapatıldı.');
