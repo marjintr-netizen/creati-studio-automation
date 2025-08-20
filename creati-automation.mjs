@@ -22,6 +22,7 @@ async function takeScreenshot(page, name) {
 
 // Görseli URL'den indirme fonksiyonu
 function downloadImage(url, filepath) {
+    // ... (Bu fonksiyon değişmedi, olduğu gibi kalabilir) ...
     return new Promise((resolve, reject) => {
         https.get(url, (response) => {
             if (response.statusCode !== 200) {
@@ -63,9 +64,13 @@ async function createVideo() {
         await takeScreenshot(page, '01-login-page-loaded');
         console.log('Login sayfası yüklendi.');
 
-        // --- ANA DÜZELTME: "Continue with email" BUTONUNA TIKLAMA ---
+        // --- KESİN ÇÖZÜM: DAHA GÜÇLÜ BİR SEÇİCİ KULLANMAK ---
         console.log('"Continue with email" butonu aranıyor...');
-        const continueWithEmailButton = page.locator('button:has-text("Continue with email")');
+        // Playwright'in önerdiği en sağlam yöntem: Rolü "button" ve adı (içindeki metin)
+        // "Continue with email" olan elementi bul. "/.../i" büyük/küçük harf duyarsız arama yapar.
+        const continueWithEmailButton = page.getByRole('button', { name: /Continue with email/i });
+        
+        // Elementin tıklanabilir ve görünür olmasını bekle
         await continueWithEmailButton.waitFor({ state: 'visible' });
         await continueWithEmailButton.click();
         console.log('"Continue with email" butonuna tıklandı.');
@@ -74,7 +79,7 @@ async function createVideo() {
         // Artık e-posta alanı görünür olmalı
         console.log('Email alanı bekleniyor...');
         const emailInput = page.locator('input[type="email"]');
-        await emailInput.waitFor({ state: 'visible', timeout: 20000 });
+        await emailInput.waitFor({ state: 'visible' });
         console.log('Email alanı bulundu.');
         
         await emailInput.fill(email);
@@ -88,7 +93,8 @@ async function createVideo() {
         console.log('Başarıyla giriş yapıldı, dashboard yüklendi');
         await takeScreenshot(page, '03-after-login');
 
-        // 2. DİREKT OLARAK TEMPLATE EDİT SAYFASINA GİTMEK
+        // ... (Kodun geri kalanı tamamen aynı) ...
+        
         console.log('2. Cozy Bedroom edit sayfasına direkt gidiliyor');
         const templateURL = 'https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories';
         await page.goto(templateURL, { waitUntil: 'networkidle' });
@@ -97,7 +103,6 @@ async function createVideo() {
         console.log('Template edit sayfası yüklendi');
         await takeScreenshot(page, '04-cozy-bedroom-edit');
 
-        // 3. ÜRÜN GÖRSELİNİ YÜKLEME
         console.log('3. Ürün görseli upload ediliyor');
         const tempImagePath = '/tmp/product_image.jpg';
         await downloadImage(productImageUrl, tempImagePath);
@@ -115,7 +120,6 @@ async function createVideo() {
         console.log('Görsel yüklendi ve popup kapatıldı');
         await takeScreenshot(page, '05-after-upload');
         
-        // 4. ÜRÜN AÇIKLAMASINI GİRME
         console.log('4. Ürün açıklaması giriliyor');
         const descriptionInput = page.locator('textarea[placeholder*="Type your speech text"]');
         await descriptionInput.waitFor({ state: 'visible' });
@@ -123,7 +127,6 @@ async function createVideo() {
         console.log('Ürün açıklaması girildi');
         await takeScreenshot(page, '06-after-description');
 
-        // 5. DİLİ TÜRKÇE OLARAK SEÇME
         console.log('5. Dil Türkçe olarak ayarlanıyor');
         await page.locator('button:has(span:text-matches("English", "i"))').click();
         await page.waitForSelector('text=Turkish', { state: 'visible' });
@@ -131,7 +134,6 @@ async function createVideo() {
         console.log('Dil Türkçe olarak seçildi');
         await takeScreenshot(page, '07-after-language');
 
-        // 6. VİDEO OLUŞTURMA İŞLEMİNİ BAŞLATMA
         console.log('6. Video oluşturma başlatılıyor');
         const continueButton = page.locator('button:has-text("Continue")');
         await continueButton.waitFor({ state: 'enabled' });
