@@ -22,7 +22,6 @@ async function takeScreenshot(page, name) {
 
 // Görseli URL'den indirme fonksiyonu
 function downloadImage(url, filepath) {
-    // ... (Bu fonksiyon değişmedi, olduğu gibi kalabilir) ...
     return new Promise((resolve, reject) => {
         https.get(url, (response) => {
             if (response.statusCode !== 200) {
@@ -48,7 +47,6 @@ async function createVideo() {
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
-    // YENİLİK 1: Tarayıcıya özel context oluşturup User-Agent belirliyoruz
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
     });
@@ -56,23 +54,32 @@ async function createVideo() {
     const page = await context.newPage();
     await page.setViewportSize({ width: 1920, height: 1080 });
     
-    // YENİLİK 2: Genel zaman aşımını artırıyoruz
-    page.setDefaultTimeout(30000); // 15 saniyeden 30 saniyeye çıkardık
+    page.setDefaultTimeout(30000);
 
     try {
         // 1. LOGIN İŞLEMİ
         console.log('1. Creati Studio login sayfasına gidiliyor');
-        
-        // YENİLİK 3: Bekleme stratejisini güçlendiriyoruz
-        // 'networkidle' opsiyonu, sayfa yüklendikten sonra ağ aktivitesinin durmasını bekler.
-        // Bu, dinamik olarak yüklenen siteler için çok daha güvenilirdir.
         await page.goto('https://www.creati.studio/login', { waitUntil: 'networkidle' });
-
-        console.log('Login sayfası yüklendi, email alanı bekleniyor...');
         await takeScreenshot(page, '01-login-page-loaded');
+        console.log('Login sayfası yüklendi.');
 
+        // --- YENİ GÜNCELLEME: Olası pop-up'ları veya çerez bildirimlerini kapatma ---
+        // Bu blok, butonu bulursa tıklar, bulamazsa hata vermeden devam eder.
+        try {
+            console.log('Olası pop-up veya çerez butonu kontrol ediliyor...');
+            // Web sitesindeki butonda yazabilecek yaygın metinleri arıyoruz.
+            const acceptButton = page.locator('button:has-text("Accept"), button:has-text("Got it"), button:has-text("Allow"), button:has-text("Kabul Et")').first();
+            await acceptButton.waitFor({ state: 'visible', timeout: 5000 }); // 5 saniye bekler, yoksa devam eder.
+            console.log('Pop-up butonu bulundu, tıklanıyor.');
+            await acceptButton.click();
+            await takeScreenshot(page, '01a-popup-closed');
+        } catch (e) {
+            console.log('Kapatılacak bir pop-up bulunamadı, devam ediliyor.');
+        }
+
+        console.log('Email alanı bekleniyor...');
         const emailInput = page.locator('input[type="email"]');
-        await emailInput.waitFor({ state: 'visible', timeout: 20000 }); // Sadece bu bekleme biraz daha kısa kalabilir
+        await emailInput.waitFor({ state: 'visible', timeout: 20000 });
         console.log('Email alanı bulundu.');
         
         await emailInput.fill(email);
@@ -86,7 +93,6 @@ async function createVideo() {
         console.log('Başarıyla giriş yapıldı, dashboard yüklendi');
         await takeScreenshot(page, '03-after-login');
 
-        // ... GERİ KALAN KODUNUZ AYNI ŞEKİLDE DEVAM EDİYOR ...
         // 2. DİREKT OLARAK TEMPLATE EDİT SAYFASINA GİTMEK
         console.log('2. Cozy Bedroom edit sayfasına direkt gidiliyor');
         const templateURL = 'https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories';
@@ -108,8 +114,6 @@ async function createVideo() {
         await fileChooser.setFiles(tempImagePath);
         console.log('Dosya seçme penceresi açıldı ve görsel seçildi');
 
-        // "Got it!" butonu yerine daha sağlam bir bekleme (Örnek: Önizleme)
-        // Şimdilik eski kodunuzu bırakıyorum ama burası iyileştirilebilir.
         const gotItButton = page.locator('button:has-text("Got it!")');
         await gotItButton.waitFor({ state: 'visible', timeout: 20000 });
         await gotItButton.click();
@@ -139,7 +143,7 @@ async function createVideo() {
         await continueButton.click();
         console.log('Continue butonuna tıklandı');
         
-        await page.waitForURL('**/history/**', { timeout: 60000 }); // Oluşturma uzun sürebilir
+        await page.waitForURL('**/history/**', { timeout: 60000 });
         console.log('Video oluşturma sayfasına yönlendirildi.');
         await takeScreenshot(page, '08-final-state');
         
@@ -148,7 +152,7 @@ async function createVideo() {
     } catch (error) {
         console.error('❌ Hata oluştu:', error);
         await takeScreenshot(page, 'error-state');
-        throw error;
+        throw error; // Hatayı fırlatarak workflow'un başarısız olmasını sağlıyoruz
     } finally {
         await browser.close();
         console.log('Browser kapatıldı.');
