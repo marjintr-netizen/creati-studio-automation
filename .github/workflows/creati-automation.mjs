@@ -45,9 +45,9 @@ async function continueFromUpload() {
     await page.setViewportSize({ width: 1280, height: 720 });
     
     try {
-        // Manuel template seçimi sonrası upload sayfasından devralır
-        console.log('1. Upload/Create sayfasına gidiliyor');
-        await page.goto('https://www.creati.studio/create');
+        // Cozy Bedroom edit sayfasına direkt git
+        console.log('1. Cozy Bedroom edit sayfasına gidiliyor');
+        await page.goto('https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories');
         await page.waitForTimeout(3000);
         await takeScreenshot(page, '01-upload-page');
         
