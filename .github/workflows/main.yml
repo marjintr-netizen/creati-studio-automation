@@ -28,21 +28,20 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
+        cache: 'npm' # npm paketlerini cache'leyerek sonraki çalıştırmaları hızlandırır
         
-    - name: Install dependencies
+    - name: Install Dependencies and Browsers
       run: |
-        npm init -y
-        npm pkg set type=module
-        npm install playwright
-        
-    - name: Install Playwright browsers
-      run: npx playwright install chromium
+        # package-lock.json dosyasından hızlı ve tutarlı kurulum yapar
+        npm ci 
+        # ANA DÜZELTME: --with-deps bayrağı ile sistem bağımlılıklarını kurar
+        npx playwright install --with-deps chromium
       
     - name: Run automation script
       run: node creati-automation.mjs
       env:
         EMAIL: ${{ github.event.inputs.email }}
-        PASSWORD: ${{ github.event.inputs.password }}
+        PASSWORD: ${{ secrets.PASSWORD }} # Güvenlik için şifreyi secret olarak saklamak daha iyidir
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
     
