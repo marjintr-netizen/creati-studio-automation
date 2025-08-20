@@ -7,8 +7,7 @@ const password = process.env.PASSWORD;
 const productDescription = process.env.DESCRIPTION;
 const productImageUrl = process.env.IMAGE_URL;
 
-console.log('Hybrid automation başlatılıyor...');
-console.log('Manuel template seçimi sonrası devralıyor...');
+console.log('Creati Studio automation başlatılıyor...');
 
 async function takeScreenshot(page, name) {
     try {
@@ -35,9 +34,9 @@ function downloadImage(url, filepath) {
     });
 }
 
-async function continueFromUpload() {
+async function createVideo() {
     const browser = await chromium.launch({ 
-        headless: true,
+        headless: false, // DEBUG için false yap, sonra true yaparsın
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
@@ -45,207 +44,262 @@ async function continueFromUpload() {
     await page.setViewportSize({ width: 1280, height: 720 });
     
     try {
-        // Cozy Bedroom edit sayfasına direkt git
-        console.log('1. Cozy Bedroom edit sayfasına gidiliyor');
-        await page.goto('https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories');
+        // 1. LOGIN
+        console.log('1. Creati Studio login sayfasına gidiliyor');
+        await page.goto('https://www.creati.studio/');
         await page.waitForTimeout(3000);
-        await takeScreenshot(page, '01-cozy-bedroom-page');
+        await takeScreenshot(page, '01-homepage');
         
-        // Eğer login gerekiyorsa (session expire)
-        const needsLogin = await page.$('input[type="email"]');
-        if (needsLogin) {
-            console.log('2. Session expire - tekrar login yapılıyor');
-            await page.fill('input[type="email"]', email);
-            await page.fill('input[type="password"]', password);
-            
-            const loginSelectors = [
-                'button[type="submit"]',
-                'button:has-text("Sign in")',
-                'button:has-text("Log in")'
-            ];
-            
-            for (const selector of loginSelectors) {
-                try {
-                    await page.click(selector);
-                    console.log('Login yapıldı');
-                    break;
-                } catch (e) {
-                    continue;
-                }
-            }
-            
-            await page.waitForTimeout(5000);
-            await page.goto('https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories');
-            await page.waitForTimeout(3000);
-            await takeScreenshot(page, '02-after-relogin');
+        // Login butonuna tıkla
+        try {
+            await page.click('text=Go Create', { timeout: 5000 });
+        } catch (e) {
+            console.log('Go Create buton bulunamadı, direkt login sayfasına gidiliyor');
+            await page.goto('https://www.creati.studio/login');
+        }
+        await page.waitForTimeout(3000);
+        
+        // Email ile devam et
+        try {
+            await page.click('text=Continue with email');
+            await page.waitForTimeout(2000);
+        } catch (e) {
+            console.log('Continue with email bulunamadı');
         }
         
-        console.log('3. Upload butonu aranıyor ve tıklanıyor');
-        const uploadButtonSelectors = [
-            'button:has-text("Upload product image")',
-            'text="Upload product image"',
-            'button:has-text("Upload")',
-            '[data-testid*="upload"]'
+        // Login formunu doldur
+        console.log('2. Email ve password giriliyor');
+        await page.fill('input[type="email"]', email);
+        await page.fill('input[type="password"]', password);
+        await takeScreenshot(page, '02-login-filled');
+        
+        // Login butonuna tıkla
+        const loginButton = await page.$('button:has-text("LOG IN/SIGN UP")') || 
+                           await page.$('button[type="submit"]');
+        if (loginButton) {
+            await loginButton.click();
+            console.log('Login butonu tıklandı');
+        }
+        
+        await page.waitForTimeout(8000);
+        await takeScreenshot(page, '03-after-login');
+        
+        // 2. TEMPLATES SAYFASINA GİT
+        console.log('3. Templates sayfasına gidiliyor');
+        try {
+            await page.click('text=Templates');
+        } catch (e) {
+            // Direkt URL'ye git
+            await page.goto('https://www.creati.studio/templates');
+        }
+        await page.waitForTimeout(5000);
+        await takeScreenshot(page, '04-templates-page');
+        
+        // 3. BAGS & ACCESSORIES KATEGORİSİNİ SEÇ
+        console.log('4. Bags & Accessories kategorisi aranıyor');
+        
+        // Sayfayı scroll et
+        await page.evaluate(() => window.scrollBy(0, 300));
+        await page.waitForTimeout(2000);
+        
+        // Kategori başlığını bul
+        const categoryFound = await page.locator('text="Bags & Accessories"').first();
+        if (categoryFound) {
+            console.log('Bags & Accessories kategorisi bulundu');
+            await page.evaluate(() => window.scrollBy(0, 200));
+            await page.waitForTimeout(2000);
+        }
+        
+        await takeScreenshot(page, '05-category-found');
+        
+        // 4. COZY BEDROOM'U BUL VE TIKLA
+        console.log('5. Cozy Bedroom template aranıyor');
+        
+        // Önce görseli bul
+        const cozyBedroomSelectors = [
+            // Text tabanlı
+            'text="Cozy Bedroom"',
+            'p:has-text("Cozy Bedroom")',
+            'span:has-text("Cozy Bedroom")',
+            
+            // Parent container
+            'div:has-text("Cozy Bedroom"):has(img)',
+            'article:has-text("Cozy Bedroom")',
+            
+            // Image tabanlı
+            'img[alt*="Cozy"]',
+            'img[src*="cozy"]',
+            
+            // Data attribute
+            '[data-label*="Cozy"]',
+            '[data-name*="Cozy"]'
         ];
         
-        let uploadClicked = false;
+        let templateClicked = false;
+        for (const selector of cozyBedroomSelectors) {
+            try {
+                const element = await page.$(selector);
+                if (element) {
+                    // Element'in görünür olduğundan emin ol
+                    await element.scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(1000);
+                    await element.click();
+                    console.log(`Cozy Bedroom tıklandı: ${selector}`);
+                    templateClicked = true;
+                    break;
+                }
+            } catch (e) {
+                console.log(`Selector başarısız: ${selector}`);
+                continue;
+            }
+        }
+        
+        // Eğer bulamazsa ilk template'i seç
+        if (!templateClicked) {
+            console.log('Cozy Bedroom bulunamadı, ilk template seçiliyor');
+            const firstTemplate = await page.$('img').first();
+            if (firstTemplate) {
+                await firstTemplate.click();
+                console.log('İlk template seçildi');
+            }
+        }
+        
+        await page.waitForTimeout(5000);
+        await takeScreenshot(page, '06-template-selected');
+        
+        // 5. UPLOAD İŞLEMİ
+        console.log('6. Ürün görseli upload ediliyor');
+        
+        // Upload butonunu bul
+        const uploadButtonSelectors = [
+            'button:has-text("Upload product image")',
+            'button:has-text("Upload")',
+            'text="Upload product image"',
+            'div:has-text("Upload") button'
+        ];
+        
         for (const selector of uploadButtonSelectors) {
             try {
                 await page.click(selector);
-                console.log(`Upload button tıklandı: ${selector}`);
-                uploadClicked = true;
+                console.log('Upload butonu tıklandı');
                 await page.waitForTimeout(2000);
                 break;
             } catch (e) {
-                console.log(`Upload button bulunamadı: ${selector}`);
                 continue;
             }
         }
         
-        await takeScreenshot(page, '03-after-upload-click');
-        
-        console.log('3. Dosya upload işlemi');
+        // Dosyayı indir ve upload et
         const tempImagePath = '/tmp/product_image.jpg';
+        await downloadImage(productImageUrl, tempImagePath);
+        console.log('Görsel indirildi');
         
-        try {
-            await downloadImage(productImageUrl, tempImagePath);
-            console.log('Görsel indirildi');
-            
-            // Upload input'unu direkt ara
-            const fileInputSelectors = [
-                'input[type="file"]',
-                'input[accept*="image"]',
-                'input[accept*=".jpg"]',
-                'input[accept*=".png"]'
-            ];
-            
-            let uploaded = false;
-            for (const selector of fileInputSelectors) {
-                try {
-                    const fileInput = await page.$(selector);
-                    if (fileInput) {
-                        await fileInput.setInputFiles(tempImagePath);
-                        console.log(`Dosya upload edildi: ${selector}`);
-                        uploaded = true;
-                        break;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-            
-            // File input bulunamazsa upload butonunu ara
-            if (!uploaded) {
-                const uploadButtonSelectors = [
-                    'button:has-text("Upload")',
-                    'button:has-text("Choose file")',
-                    'button:has-text("Select image")',
-                    'text=Upload product image',
-                    'div:has-text("upload") button',
-                    '[data-testid*="upload"]'
-                ];
-                
-                for (const selector of uploadButtonSelectors) {
-                    try {
-                        await page.click(selector);
-                        console.log(`Upload button tıklandı: ${selector}`);
-                        await page.waitForTimeout(2000);
-                        
-                        const fileInput = await page.$('input[type="file"]');
-                        if (fileInput) {
-                            await fileInput.setInputFiles(tempImagePath);
-                            console.log('File input üzerinden upload edildi');
-                            uploaded = true;
-                            break;
-                        }
-                    } catch (e) {
-                        continue;
-                    }
-                }
-            }
-            
-        } catch (error) {
-            console.error('Upload hatası:', error);
+        // File input'u bul
+        const fileInput = await page.$('input[type="file"]');
+        if (fileInput) {
+            await fileInput.setInputFiles(tempImagePath);
+            console.log('Dosya upload edildi');
+            await page.waitForTimeout(3000);
         }
         
-        await page.waitForTimeout(3000);
-        await takeScreenshot(page, '03-after-upload');
+        await takeScreenshot(page, '07-after-upload');
         
-        console.log('4. Product description giriliyor');
-        const scriptSelectors = [
+        // 6. ÜRÜN AÇIKLAMASI GİR
+        console.log('7. Ürün açıklaması giriliyor');
+        
+        // Text alanını bul
+        const textSelectors = [
+            'textarea[placeholder*="Type"]',
+            'textarea[placeholder*="speech"]',
+            'textarea[placeholder*="text"]',
             'textarea',
             'div[contenteditable="true"]',
-            'input[placeholder*="description" i]',
-            'input[placeholder*="script" i]',
-            'textarea[placeholder*="text" i]',
-            'div[role="textbox"]'
+            'input[type="text"][placeholder*="description"]'
         ];
         
-        let textEntered = false;
-        for (const selector of scriptSelectors) {
+        for (const selector of textSelectors) {
             try {
-                await page.waitForSelector(selector, { timeout: 3000 });
-                await page.fill(selector, productDescription);
-                console.log(`Description girildi: ${selector}`);
-                textEntered = true;
-                break;
+                const element = await page.$(selector);
+                if (element) {
+                    await element.click();
+                    await element.fill(productDescription);
+                    console.log('Açıklama girildi');
+                    break;
+                }
             } catch (e) {
                 continue;
             }
-        }
-        
-        if (!textEntered) {
-            console.log('Text input bulunamadı, devam ediliyor...');
         }
         
         await page.waitForTimeout(2000);
-        await takeScreenshot(page, '04-after-text-input');
+        await takeScreenshot(page, '08-after-description');
         
-        console.log('5. Video generation başlatılıyor');
+        // 7. DİL SEÇİMİ (TÜRKÇE)
+        console.log('8. Dil Türkçe yapılıyor');
+        
+        // Dil dropdown'ını bul
+        try {
+            // Dropdown'ı aç
+            await page.click('select, [role="combobox"], button:has-text("English")');
+            await page.waitForTimeout(1000);
+            
+            // Türkçe'yi seç
+            await page.selectOption('select', { label: 'Turkish' });
+            // veya
+            await page.click('option:has-text("Turkish"), text="Turkish", text="Türkçe"');
+        } catch (e) {
+            console.log('Dil seçimi yapılamadı:', e.message);
+        }
+        
+        await takeScreenshot(page, '09-after-language');
+        
+        // 8. CONTINUE/GENERATE
+        console.log('9. Video generation başlatılıyor');
+        
         const generateSelectors = [
-            'button:has-text("Generate")',
-            'button:has-text("Create video")',
-            'button:has-text("Generate video")',
             'button:has-text("Continue")',
+            'button:has-text("Generate")',
             'button:has-text("Create")',
-            'button:has-text("Start")',
-            '[data-testid*="generate"]',
-            'button[type="submit"]'
+            'button:has-text("Generate video")',
+            'button[type="submit"]:not(:disabled)'
         ];
         
-        let generated = false;
         for (const selector of generateSelectors) {
             try {
-                await page.click(selector);
-                console.log(`Video generation başlatıldı: ${selector}`);
-                generated = true;
-                break;
+                const button = await page.$(selector);
+                if (button) {
+                    const isDisabled = await button.evaluate(el => el.disabled);
+                    if (!isDisabled) {
+                        await button.click();
+                        console.log('Generate butonu tıklandı');
+                        break;
+                    }
+                }
             } catch (e) {
                 continue;
             }
         }
         
-        if (!generated) {
-            console.log('Generate button bulunamadı');
-            // Sayfadaki tüm butonları logla
-            const buttons = await page.$$eval('button', 
-                buttons => buttons.map(btn => btn.textContent?.trim()).filter(Boolean)
-            );
-            console.log('Sayfadaki butonlar:', buttons.slice(0, 10));
-        }
+        await page.waitForTimeout(5000);
+        await takeScreenshot(page, '10-final');
         
-        await page.waitForTimeout(3000);
-        await takeScreenshot(page, '05-final-result');
+        console.log('Video generation başlatıldı, işlem tamamlandı');
         
-        console.log('Hybrid automation tamamlandı');
+        // 10-15 saniye bekle
+        await page.waitForTimeout(15000);
         
     } catch (error) {
-        console.error('Hata:', error);
-        await takeScreenshot(page, '99-error');
-        process.exit(1);
+        console.error('Hata oluştu:', error);
+        await takeScreenshot(page, 'error-state');
+        throw error;
     } finally {
-        await browser.close();
+        // Browser'ı kapatma (debug için)
+        // await browser.close();
+        console.log('Browser açık bırakıldı debug için');
+        
+        // Production'da kapat
+        // await browser.close();
     }
 }
 
-await continueFromUpload();
+await createVideo();
