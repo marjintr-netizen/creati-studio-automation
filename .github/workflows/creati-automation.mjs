@@ -2,25 +2,23 @@ import { chromium } from 'playwright';
 import https from 'https';
 import fs from 'fs';
 
-// Environment variables'dan verileri al
 const email = process.env.EMAIL;
 const password = process.env.PASSWORD;
 const productDescription = process.env.DESCRIPTION;
 const productImageUrl = process.env.IMAGE_URL;
 
-console.log('Creati Studio automation başlatılıyor...');
+console.log('Hybrid automation başlatılıyor...');
+console.log('Manuel template seçimi sonrası devralıyor...');
 
-// Screenshot fonksiyonu
 async function takeScreenshot(page, name) {
     try {
         await page.screenshot({ path: `debug-${name}.png`, fullPage: true });
-        console.log(`📸 Screenshot alındı: debug-${name}.png`);
+        console.log(`Screenshot alındı: debug-${name}.png`);
     } catch (error) {
-        console.log(`❌ Screenshot alınamadı: ${error.message}`);
+        console.log(`Screenshot alınamadı: ${error.message}`);
     }
 }
 
-// URL'den dosya indirme fonksiyonu
 function downloadImage(url, filepath) {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(filepath);
@@ -37,122 +35,106 @@ function downloadImage(url, filepath) {
     });
 }
 
-async function createVideo() {
+async function continueFromUpload() {
     const browser = await chromium.launch({ 
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
     const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 720 });
     
     try {
-        console.log('1. Creati Studio\'ya gidiliyor');
-        await page.goto('https://www.creati.studio/');
+        // Manuel template seçimi sonrası upload sayfasından devralır
+        console.log('1. Upload/Create sayfasına gidiliyor');
+        await page.goto('https://www.creati.studio/create');
         await page.waitForTimeout(3000);
-        await takeScreenshot(page, '01-homepage');
+        await takeScreenshot(page, '01-upload-page');
         
-        console.log('2. Go Create butonuna tıklanıyor');
-        await page.click('text=Go Create');
-        await page.waitForTimeout(3000);
-        await takeScreenshot(page, '02-after-go-create');
-        
-        console.log('3. Continue with email seçiliyor');
-        await page.click('text=Continue with email');
-        await page.waitForTimeout(3000);
-        await takeScreenshot(page, '03-login-form');
-        
-        console.log('4. Email ve password giriliyor');
-        await page.fill('input[type="email"]', email);
-        await page.fill('input[type="password"]', password);
-        await takeScreenshot(page, '04-filled-form');
-        
-        const submitSelectors = [
-            'button[type="submit"]',
-            'button:has-text("Sign in")',
-            'button:has-text("Log in")'
-        ];
-        
-        for (const selector of submitSelectors) {
-            try {
-                await page.click(selector, { timeout: 5000 });
-                console.log('Giriş yapıldı');
-                break;
-            } catch (e) {
-                continue;
-            }
-        }
-        
-        await page.waitForTimeout(8000);
-        await takeScreenshot(page, '05-after-login');
-        
-        console.log('5. Templates sayfasına gidiliyor');
-        await page.click('text=Templates');
-        await page.waitForTimeout(3000);
-        await takeScreenshot(page, '06-templates-page');
-        
-        console.log('6. Cozy Bedroom şablonu seçiliyor');
-        await page.click('text=Cozy Bedroom');
-        await page.waitForTimeout(5000);
-        await takeScreenshot(page, '07-selected-template');
-        
-        console.log('7. Görsel upload işlemi');
-        const tempImagePath = '/tmp/product_image.jpg';
-        
-        try {
-            await downloadImage(productImageUrl, tempImagePath);
-            console.log('Görsel indirildi');
+        // Eğer login gerekiyorsa (session expire)
+        const needsLogin = await page.$('input[type="email"]');
+        if (needsLogin) {
+            console.log('2. Session expire - tekrar login yapılıyor');
+            await page.fill('input[type="email"]', email);
+            await page.fill('input[type="password"]', password);
             
-            const uploadSelectors = [
-                'button:has-text("Upload product image")',
-                'text=Upload product image',
-                'button:has-text("Upload")'
+            const loginSelectors = [
+                'button[type="submit"]',
+                'button:has-text("Sign in")',
+                'button:has-text("Log in")'
             ];
             
-            for (const selector of uploadSelectors) {
+            for (const selector of loginSelectors) {
                 try {
-                    await page.click(selector, { timeout: 3000 });
-                    console.log('Upload butonu bulundu');
+                    await page.click(selector);
+                    console.log('Login yapıldı');
                     break;
                 } catch (e) {
                     continue;
                 }
             }
             
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(5000);
+            await takeScreenshot(page, '02-after-relogin');
+        }
+        
+        console.log('3. Dosya upload işlemi');
+        const tempImagePath = '/tmp/product_image.jpg';
+        
+        try {
+            await downloadImage(productImageUrl, tempImagePath);
+            console.log('Görsel indirildi');
             
-            const fileInput = await page.$('input[type="file"]');
-            if (fileInput) {
-                await fileInput.setInputFiles(tempImagePath);
-                console.log('Dosya upload edildi');
-                
-                // Upload edilen görsele çift tıkla
-                await page.waitForTimeout(3000);
-                const uploadedImageSelectors = [
-                    'img[src*="blob:"]',
-                    'img[src*="data:"]', 
-                    '.uploaded-image',
-                    '.preview-image',
-                    '.image-preview img',
-                    'img[alt*="upload"]'
+            // Upload input'unu direkt ara
+            const fileInputSelectors = [
+                'input[type="file"]',
+                'input[accept*="image"]',
+                'input[accept*=".jpg"]',
+                'input[accept*=".png"]'
+            ];
+            
+            let uploaded = false;
+            for (const selector of fileInputSelectors) {
+                try {
+                    const fileInput = await page.$(selector);
+                    if (fileInput) {
+                        await fileInput.setInputFiles(tempImagePath);
+                        console.log(`Dosya upload edildi: ${selector}`);
+                        uploaded = true;
+                        break;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            // File input bulunamazsa upload butonunu ara
+            if (!uploaded) {
+                const uploadButtonSelectors = [
+                    'button:has-text("Upload")',
+                    'button:has-text("Choose file")',
+                    'button:has-text("Select image")',
+                    'text=Upload product image',
+                    'div:has-text("upload") button',
+                    '[data-testid*="upload"]'
                 ];
                 
-                let imageClicked = false;
-                for (const selector of uploadedImageSelectors) {
+                for (const selector of uploadButtonSelectors) {
                     try {
-                        const uploadedImage = await page.$(selector);
-                        if (uploadedImage) {
-                            await uploadedImage.dblclick();
-                            console.log(`Görsele çift tıklandı: ${selector}`);
-                            imageClicked = true;
+                        await page.click(selector);
+                        console.log(`Upload button tıklandı: ${selector}`);
+                        await page.waitForTimeout(2000);
+                        
+                        const fileInput = await page.$('input[type="file"]');
+                        if (fileInput) {
+                            await fileInput.setInputFiles(tempImagePath);
+                            console.log('File input üzerinden upload edildi');
+                            uploaded = true;
                             break;
                         }
                     } catch (e) {
                         continue;
                     }
-                }
-                
-                if (!imageClicked) {
-                    console.log('Upload edilmiş görsel bulunamadı');
                 }
             }
             
@@ -161,48 +143,75 @@ async function createVideo() {
         }
         
         await page.waitForTimeout(3000);
-        await takeScreenshot(page, '08-after-upload');
+        await takeScreenshot(page, '03-after-upload');
         
-        console.log('8. Script alanı dolduruluyor');
+        console.log('4. Product description giriliyor');
         const scriptSelectors = [
             'textarea',
-            'div[contenteditable="true"]'
+            'div[contenteditable="true"]',
+            'input[placeholder*="description" i]',
+            'input[placeholder*="script" i]',
+            'textarea[placeholder*="text" i]',
+            'div[role="textbox"]'
         ];
         
+        let textEntered = false;
         for (const selector of scriptSelectors) {
             try {
+                await page.waitForSelector(selector, { timeout: 3000 });
                 await page.fill(selector, productDescription);
-                console.log('Script girildi');
+                console.log(`Description girildi: ${selector}`);
+                textEntered = true;
                 break;
             } catch (e) {
                 continue;
             }
+        }
+        
+        if (!textEntered) {
+            console.log('Text input bulunamadı, devam ediliyor...');
         }
         
         await page.waitForTimeout(2000);
-        await takeScreenshot(page, '09-after-script');
+        await takeScreenshot(page, '04-after-text-input');
         
-        console.log('9. Video oluşturma başlatılıyor');
-        const continueSelectors = [
-            'button:has-text("Continue")',
+        console.log('5. Video generation başlatılıyor');
+        const generateSelectors = [
             'button:has-text("Generate")',
             'button:has-text("Create video")',
             'button:has-text("Generate video")',
-            'button:has-text("Start generation")'
+            'button:has-text("Continue")',
+            'button:has-text("Create")',
+            'button:has-text("Start")',
+            '[data-testid*="generate"]',
+            'button[type="submit"]'
         ];
         
-        for (const selector of continueSelectors) {
+        let generated = false;
+        for (const selector of generateSelectors) {
             try {
-                await page.click(selector, { timeout: 5000 });
-                console.log(`Video oluşturma başlatıldı: ${selector}`);
+                await page.click(selector);
+                console.log(`Video generation başlatıldı: ${selector}`);
+                generated = true;
                 break;
             } catch (e) {
                 continue;
             }
         }
         
-        await takeScreenshot(page, '10-video-generation-started');
-        console.log('İşlem tamamlandı');
+        if (!generated) {
+            console.log('Generate button bulunamadı');
+            // Sayfadaki tüm butonları logla
+            const buttons = await page.$$eval('button', 
+                buttons => buttons.map(btn => btn.textContent?.trim()).filter(Boolean)
+            );
+            console.log('Sayfadaki butonlar:', buttons.slice(0, 10));
+        }
+        
+        await page.waitForTimeout(3000);
+        await takeScreenshot(page, '05-final-result');
+        
+        console.log('Hybrid automation tamamlandı');
         
     } catch (error) {
         console.error('Hata:', error);
@@ -213,4 +222,4 @@ async function createVideo() {
     }
 }
 
-await createVideo();
+await continueFromUpload();
