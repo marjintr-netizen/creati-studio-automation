@@ -6,19 +6,15 @@ on:
       email:
         description: 'Creati Studio Email'
         required: true
-        type: string
       password:
         description: 'Creati Studio Password'
         required: true
-        type: string
       productDescription:
         description: 'Product Description'
         required: true
-        type: string
       productImageUrl:
         description: 'Product Image URL'
         required: true
-        type: string
 
 jobs:
   create-video:
@@ -33,7 +29,7 @@ jobs:
       with:
         node-version: '18'
         
-    - name: Install Playwright
+    - name: Install dependencies
       run: |
         npm init -y
         npm pkg set type=module
@@ -42,300 +38,7 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install chromium
       
-    - name: Create automation script
-      run: |
-        cat > creati-automation.mjs << 'EOF'
-        import { chromium } from 'playwright';
-        import https from 'https';
-        import fs from 'fs';
-
-        const email = process.env.EMAIL;
-        const password = process.env.PASSWORD;
-        const productDescription = process.env.DESCRIPTION;
-        const productImageUrl = process.env.IMAGE_URL;
-
-        console.log('Creati Studio automation başlatılıyor...');
-
-        async function takeScreenshot(page, name) {
-            try {
-                await page.screenshot({ path: `debug-${name}.png`, fullPage: true });
-                console.log(`Screenshot alındı: debug-${name}.png`);
-            } catch (error) {
-                console.log(`Screenshot alınamadı: ${error.message}`);
-            }
-        }
-
-        function downloadImage(url, filepath) {
-            return new Promise((resolve, reject) => {
-                const file = fs.createWriteStream(filepath);
-                https.get(url, (response) => {
-                    response.pipe(file);
-                    file.on('finish', () => {
-                        file.close();
-                        resolve(filepath);
-                    });
-                }).on('error', (err) => {
-                    fs.unlink(filepath, () => {});
-                    reject(err);
-                });
-            });
-        }
-
-        async function createVideo() {
-            const browser = await chromium.launch({ 
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
-            
-            const page = await browser.newPage();
-            await page.setViewportSize({ width: 1280, height: 720 });
-            
-            try {
-                // 1. LOGIN
-                console.log('1. Creati Studio login sayfasına gidiliyor');
-                await page.goto('https://www.creati.studio/');
-                await page.waitForTimeout(3000);
-                await takeScreenshot(page, '01-homepage');
-                
-                // Login butonuna tıkla
-                try {
-                    await page.click('text=Go Create', { timeout: 5000 });
-                } catch (e) {
-                    console.log('Go Create buton bulunamadı, direkt login sayfasına gidiliyor');
-                    await page.goto('https://www.creati.studio/login');
-                }
-                await page.waitForTimeout(3000);
-                
-                // Email ile devam et
-                try {
-                    await page.click('text=Continue with email');
-                    await page.waitForTimeout(2000);
-                } catch (e) {
-                    console.log('Continue with email bulunamadı');
-                }
-                
-                // Login formunu doldur
-                console.log('2. Email ve password giriliyor');
-                await page.fill('input[type="email"]', email);
-                await page.fill('input[type="password"]', password);
-                await takeScreenshot(page, '02-login-filled');
-                
-                // Login butonuna tıkla
-                const loginButton = await page.$('button:has-text("LOG IN/SIGN UP")') || 
-                                   await page.$('button[type="submit"]');
-                if (loginButton) {
-                    await loginButton.click();
-                    console.log('Login butonu tıklandı');
-                }
-                
-                await page.waitForTimeout(8000);
-                await takeScreenshot(page, '03-after-login');
-                
-                // 2. DİREKT COZY BEDROOM EDIT SAYFASINA GİT
-                console.log('3. Cozy Bedroom edit sayfasına direkt gidiliyor');
-                await page.goto('https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories');
-                await page.waitForTimeout(5000);
-                await takeScreenshot(page, '04-cozy-bedroom-edit');
-                
-                // 3. UPLOAD İŞLEMİ
-                console.log('4. Ürün görseli upload ediliyor');
-                
-                // Upload butonunu bul ve tıkla
-                const uploadButtonSelectors = [
-                    'button:has-text("Upload product image")',
-                    'button:has-text("Upload")',
-                    'text="Upload product image"',
-                    'div:has-text("Upload") button',
-                    'button[class*="upload"]',
-                    '[data-testid*="upload"]'
-                ];
-                
-                let uploadClicked = false;
-                for (const selector of uploadButtonSelectors) {
-                    try {
-                        await page.click(selector);
-                        console.log('Upload butonu tıklandı');
-                        uploadClicked = true;
-                        await page.waitForTimeout(2000);
-                        break;
-                    } catch (e) {
-                        continue;
-                    }
-                }
-                
-                // Dosyayı indir ve upload et
-                const tempImagePath = '/tmp/product_image.jpg';
-                await downloadImage(productImageUrl, tempImagePath);
-                console.log('Görsel indirildi');
-                
-                // File input'u bul ve dosyayı seç
-                const fileInput = await page.$('input[type="file"]');
-                if (fileInput) {
-                    await fileInput.setInputFiles(tempImagePath);
-                    console.log('Dosya upload edildi');
-                    await page.waitForTimeout(3000);
-                }
-                
-                await takeScreenshot(page, '05-after-upload');
-                
-                // 4. ÜRÜN AÇIKLAMASI GİR
-                console.log('5. Ürün açıklaması giriliyor');
-                
-                const textSelectors = [
-                    'textarea[placeholder*="Type"]',
-                    'textarea[placeholder*="speech"]',
-                    'textarea[placeholder*="text"]',
-                    'textarea[placeholder*="script"]',
-                    'textarea',
-                    'div[contenteditable="true"]',
-                    'input[type="text"][placeholder*="description"]'
-                ];
-                
-                let textEntered = false;
-                for (const selector of textSelectors) {
-                    try {
-                        const element = await page.$(selector);
-                        if (element) {
-                            await element.click();
-                            await page.waitForTimeout(500);
-                            await element.fill(productDescription);
-                            console.log(`Açıklama girildi: ${selector}`);
-                            textEntered = true;
-                            break;
-                        }
-                    } catch (e) {
-                        continue;
-                    }
-                }
-                
-                if (!textEntered) {
-                    console.log('Text alanı bulunamadı, devam ediliyor');
-                }
-                
-                await page.waitForTimeout(2000);
-                await takeScreenshot(page, '06-after-description');
-                
-                // 5. DİL SEÇİMİ (TÜRKÇE)
-                console.log('6. Dil Türkçe yapılıyor');
-                
-                try {
-                    // Dil dropdown'ını bul
-                    const languageSelectors = [
-                        'select',
-                        '[role="combobox"]',
-                        'button:has-text("English")',
-                        'div:has-text("English")'
-                    ];
-                    
-                    for (const selector of languageSelectors) {
-                        try {
-                            await page.click(selector);
-                            await page.waitForTimeout(1000);
-                            
-                            // Türkçe seçeneğini bul ve tıkla
-                            const turkishOptions = [
-                                'option:has-text("Turkish")',
-                                'text="Turkish"',
-                                'text="Türkçe"',
-                                'li:has-text("Turkish")',
-                                '[value="tr"]'
-                            ];
-                            
-                            for (const option of turkishOptions) {
-                                try {
-                                    await page.click(option);
-                                    console.log('Türkçe seçildi');
-                                    break;
-                                } catch (e) {
-                                    continue;
-                                }
-                            }
-                            break;
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                } catch (e) {
-                    console.log('Dil seçimi yapılamadı, varsayılan dil ile devam ediliyor');
-                }
-                
-                await takeScreenshot(page, '07-after-language');
-                
-                // 6. CONTINUE/GENERATE BUTONU
-                console.log('7. Video generation başlatılıyor');
-                
-                const generateSelectors = [
-                    'button:has-text("Continue")',
-                    'button:has-text("Generate")',
-                    'button:has-text("Create")',
-                    'button:has-text("Generate video")',
-                    'button:has-text("Start")',
-                    'button[type="submit"]:not(:disabled)',
-                    'button:not(:disabled):has-text("Next")'
-                ];
-                
-                let generateClicked = false;
-                for (const selector of generateSelectors) {
-                    try {
-                        const button = await page.$(selector);
-                        if (button) {
-                            const isDisabled = await button.evaluate(el => el.disabled);
-                            if (!isDisabled) {
-                                await button.click();
-                                console.log(`Generate butonu tıklandı: ${selector}`);
-                                generateClicked = true;
-                                break;
-                            }
-                        }
-                    } catch (e) {
-                        continue;
-                    }
-                }
-                
-                if (!generateClicked) {
-                    console.log('Generate butonu bulunamadı, tüm butonları listeliyorum');
-                    const buttons = await page.$$eval('button', 
-                        buttons => buttons.map(btn => btn.textContent?.trim()).filter(Boolean)
-                    );
-                    console.log('Sayfadaki butonlar:', buttons);
-                }
-                
-                await page.waitForTimeout(5000);
-                await takeScreenshot(page, '08-after-generate');
-                
-                // 7. BİTİŞ KONTROL
-                console.log('8. Video generation durumu kontrol ediliyor');
-                
-                // İkinci bir Continue/Generate butonu olabilir
-                for (const selector of generateSelectors) {
-                    try {
-                        await page.click(selector, { timeout: 3000 });
-                        console.log('İkinci generate butonu tıklandı');
-                        break;
-                    } catch (e) {
-                        continue;
-                    }
-                }
-                
-                await page.waitForTimeout(10000);
-                await takeScreenshot(page, '09-final-state');
-                
-                console.log('Video generation başlatıldı, işlem tamamlandı');
-                
-            } catch (error) {
-                console.error('Hata oluştu:', error);
-                await takeScreenshot(page, 'error-state');
-                throw error;
-            } finally {
-                await browser.close();
-                console.log('Browser kapatıldı');
-            }
-        }
-
-        await createVideo();
-        EOF
-        
-    - name: Run automation
+    - name: Run automation script
       run: node creati-automation.mjs
       env:
         EMAIL: ${{ github.event.inputs.email }}
@@ -345,6 +48,7 @@ jobs:
     
     - name: Upload debug screenshots
       uses: actions/upload-artifact@v4
+      # 'always()' sayesinde script hata verse bile ekran görüntüleri yüklenir
       if: always()
       with:
         name: debug-screenshots
