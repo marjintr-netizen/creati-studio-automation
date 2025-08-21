@@ -1,7 +1,7 @@
 # Workflow'un adı
 name: Creati Studio Video Creator
 
-# Workflow'un ne zaman tetikleneceğini belirler.
+# Workflow'un ne zaman tetikleneceğini belirler
 on:
   workflow_dispatch:
     # Manuel çalıştırma sırasında kullanıcıdan istenecek girdiler
@@ -11,11 +11,11 @@ on:
         required: true
         type: string
       productDescription:
-        description: 'Product Description'
+        description: 'Product Description (Turkish)'
         required: true
         type: string
       productImageUrl:
-        description: 'Product Image URL'
+        description: 'Product Image URL (from Margin website)'
         required: true
         type: string
 
@@ -24,6 +24,9 @@ jobs:
   create-video:
     # Job'un çalışacağı sanal makine tipi
     runs-on: ubuntu-latest
+    
+    # Zaman aşımı süresi (maksimum 30 dakika)
+    timeout-minutes: 30
     
     # Job'un adımları (steps)
     steps:
@@ -36,6 +39,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
+        cache: 'npm'
         
     # 3. Adım: Gerekli NPM paketlerini ve Playwright tarayıcısını kurar
     - name: Install Dependencies and Browser
@@ -43,28 +47,77 @@ jobs:
         npm init -y
         npm pkg set type=module
         npm install playwright
-        # --with-deps bayrağı, GitHub Actions ortamı için gerekli tüm sistem kütüphanelerini kurar.
+        # --with-deps bayrağı, GitHub Actions ortamı için gerekli tüm sistem kütüphanelerini kurar
         npx playwright install --with-deps chromium
       
-    # 4. Adım: Otomasyon betiğini çalıştırır
-    - name: Run automation script
+    # 4. Adım: Input validation
+    - name: Validate inputs
+      run: |
+        echo "Validating inputs..."
+        if [[ -z "${{ github.event.inputs.email }}" ]]; then
+          echo "❌ Email is required"
+          exit 1
+        fi
+        if [[ -z "${{ github.event.inputs.productDescription }}" ]]; then
+          echo "❌ Product description is required"
+          exit 1
+        fi
+        if [[ -z "${{ github.event.inputs.productImageUrl }}" ]]; then
+          echo "❌ Product image URL is required"
+          exit 1
+        fi
+        echo "✅ All inputs are valid"
+      
+    # 5. Adım: Otomasyon betiğini çalıştırır
+    - name: Run Creati Studio automation
       run: node creati-automation.mjs
       env:
         # workflow_dispatch ile alınan girdileri ortam değişkeni olarak betiğe aktarıyoruz
         EMAIL: ${{ github.event.inputs.email }}
-        # --- GÜVENLİK GÜNCELLEMESİ ---
-        # Şifre artık GitHub Secrets'tan güvenli bir şekilde alınıyor.
-        # Bu secret'ı reponuzun Ayarlar (Settings) kısmından eklemelisiniz.
+        # Şifre GitHub Secrets'tan güvenli bir şekilde alınıyor
         PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
+        # Debug için ek environment variables
+        DEBUG: 'true'
+        PLAYWRIGHT_BROWSERS_PATH: '/home/runner/.cache/ms-playwright'
     
-    # 5. Adım: Hata ayıklama için oluşturulan ekran görüntülerini bir artifact olarak kaydeder
-    - name: Upload debug screenshots
-      # 'if: always()' sayesinde, önceki adımlar hata verse bile bu adım her zaman çalışır.
-      if: always()
+    # 6. Adım: Başarı durumunda sonuçları kaydet
+    - name: Save success results
+      if: success()
+      run: |
+        echo "✅ Video creation process completed successfully!"
+        echo "Email: ${{ github.event.inputs.email }}"
+        echo "Description length: $(echo '${{ github.event.inputs.productDescription }}' | wc -c)"
+        echo "Image URL: ${{ github.event.inputs.productImageUrl }}"
+    
+    # 7. Adım: Hata ayıklama için oluşturulan dosyaları artifact olarak kaydet
+    - name: Upload debug files
+      if: always()  # Her durumda çalış (başarı veya hata)
       uses: actions/upload-artifact@v4
       with:
-        name: debug-screenshots
-        path: "*.png"
-        retention-days: 1
+        name: debug-files-${{ github.run_number }}
+        path: |
+          *.png
+          *.html
+          *.log
+        retention-days: 7  # 7 gün sakla
+        
+    # 8. Adım: Hata durumunda detaylı log
+    - name: Debug on failure
+      if: failure()
+      run: |
+        echo "❌ Workflow failed. Debug information:"
+        echo "Runner OS: ${{ runner.os }}"
+        echo "Node version: $(node --version)"
+        echo "NPM version: $(npm --version)"
+        echo "Playwright version: $(npx playwright --version)"
+        
+        # Disk alanını kontrol et
+        df -h
+        
+        # Process listesi
+        ps aux | head -20
+        
+        # Network bağlantısını test et
+        ping -c 3 www.creati.studio || echo "Ping failed"
