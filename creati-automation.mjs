@@ -278,15 +278,79 @@ async function createVideo() {
         const imagePath = './product-image.jpg';
         await downloadImage(productImageUrl, imagePath);
 
-        // 7. UPLOAD PRODUCT IMAGE
+        // 7. UPLOAD PRODUCT IMAGE - Gelişmiş selector'lar
         console.log('7. Upload Product Image alanı aranıyor...');
         await retry(page, async () => {
-            // Upload butonunu veya drag-drop alanını bul
-            const uploadArea = page.locator('input[type="file"], .upload-area, .drop-zone').first();
-            await uploadArea.waitFor({ state: 'visible', timeout: 30000 });
+            // Sayfanın tam yüklenmesini bekle
+            await page.waitForLoadState('networkidle');
+            await page.waitForTimeout(3000);
+            
+            // Farklı upload selector'larını dene
+            const uploadSelectors = [
+                'input[type="file"]',
+                'input[accept*="image"]',
+                '[data-testid*="upload"]',
+                '[class*="upload"]',
+                '[class*="file"]',
+                'button:has-text("Upload")',
+                'div:has-text("Upload")',
+                'button:has-text("Choose")',
+                'div:has-text("Choose")',
+                '.cursor-pointer[role="button"]',
+                '[class*="drop"]',
+                '[class*="browse"]'
+            ];
+            
+            let uploadElement = null;
+            let foundSelector = null;
+            
+            for (const selector of uploadSelectors) {
+                try {
+                    const elements = await page.locator(selector).all();
+                    for (const element of elements) {
+                        if (await element.isVisible()) {
+                            uploadElement = element;
+                            foundSelector = selector;
+                            console.log(`Upload alanı bulundu: ${selector}`);
+                            break;
+                        }
+                    }
+                    if (uploadElement) break;
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!uploadElement) {
+                // Eğer hiçbir upload elementi bulunamazsa, sayfadaki tüm butonları listele
+                console.log('Upload elementi bulunamadı. Sayfadaki elementler kontrol ediliyor...');
+                const allButtons = await page.locator('button, div[role="button"], [class*="cursor-pointer"]').all();
+                for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+                    try {
+                        const text = await allButtons[i].textContent();
+                        const classes = await allButtons[i].getAttribute('class');
+                        console.log(`Element ${i}: "${text?.trim()}" | Classes: ${classes}`);
+                    } catch (e) {
+                        console.log(`Element ${i}: Okunamadı`);
+                    }
+                }
+                throw new Error('Upload alanı bulunamadı');
+            }
             
             // Dosyayı upload et
-            await uploadArea.setInputFiles(imagePath);
+            if (foundSelector === 'input[type="file"]' || foundSelector === 'input[accept*="image"]') {
+                // Direkt file input
+                await uploadElement.setInputFiles(imagePath);
+            } else {
+                // Button veya div ise tıkla, sonra file input'u ara
+                await uploadElement.click();
+                await page.waitForTimeout(1000);
+                
+                // Hidden file input'u ara
+                const hiddenInput = page.locator('input[type="file"]').first();
+                await hiddenInput.setInputFiles(imagePath);
+            }
+            
             console.log('Görsel başarıyla yüklendi.');
         });
         
