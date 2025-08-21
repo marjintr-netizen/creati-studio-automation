@@ -135,8 +135,11 @@ async function createVideo() {
         console.log('  • Bir template seçin (Cozy Bedroom, Beauty vb.)');
         console.log('  • Template\'e tıklayın');
         console.log('  • "Use" veya "Create" butonuna basın');
-        console.log('  • Upload sayfasına kadar ilerleyin');
-        console.log('  • Otomatik devam edecek...\n');
+        console.log('  • Upload sayfasına geldiğinizde:');
+        console.log('    - Upload butonuna TIKLAMAMAYIN');
+        console.log('    - Sadece sayfada bekleyin');
+        console.log('    - Otomasyon upload\'u halledecek');
+        console.log('  • Eğer file dialog açılırsa VAZGEÇ\'e basın\n');
         
         // 90 saniye manuel süre
         for (let i = 90; i > 0; i--) {
@@ -148,7 +151,30 @@ async function createVideo() {
         }
 
         console.log('\nManuel süre bitti, otomatik kısım başlıyor...');
+        console.log('Template sayfasını ve upload butonunu arıyor...');
         await takeScreenshot(page, '05-after-manual-selection');
+
+        // Template sayfasına geri dönmüş olabilir, tekrar template bulup upload sayfasına git
+        await retry(page, async () => {
+            // Eğer templates sayfasındaysak, template'i tekrar bul
+            if (page.url().includes('template')) {
+                console.log('Templates sayfasında, Cozy Bedroom\'u tekrar arıyor...');
+                const cozyTemplate = page.locator('text="Cozy Bedroom"').first();
+                try {
+                    await cozyTemplate.waitFor({ state: 'visible', timeout: 5000 });
+                    await cozyTemplate.click();
+                    await page.waitForTimeout(2000);
+                    
+                    // Use butonunu ara
+                    const useButton = page.locator('button:has-text("Use"), button:has-text("Create")').first();
+                    await useButton.waitFor({ state: 'visible', timeout: 5000 });
+                    await useButton.click();
+                    await page.waitForTimeout(3000);
+                } catch (e) {
+                    console.log('Cozy Bedroom bulunamadı, devam ediliyor...');
+                }
+            }
+        });
 
         // 4. GÖRSEL İNDİR
         console.log('\nADIM 4: Ürün görseli indiriliyor...');
