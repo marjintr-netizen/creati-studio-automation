@@ -193,11 +193,15 @@ async function createVideo() {
         console.log('4. Templates sayfasına gidiliyor...');
         await retry(page, async () => {
             // Templates linkini ara
-            const templatesLink = page.locator('a').filter({ hasText: /templates/i }).first();
+            const templatesLink = page.locator('a, button').filter({ hasText: /templates/i }).first();
+            await templatesLink.waitFor({ state: 'visible', timeout: 30000 });
             await templatesLink.click();
             
             // Templates sayfasının yüklendiğini kontrol et
-            await page.waitForURL('**/templates**', { timeout: 30000 });
+            await page.waitForFunction(() => {
+                const url = window.location.href;
+                return url.includes('templates') || url.includes('template');
+            }, { timeout: 30000 });
         });
         
         console.log('Templates sayfası yüklendi.');
@@ -206,15 +210,64 @@ async function createVideo() {
         // 5. COZY BEDROOM TEMPLATE'İNİ BUL
         console.log('5. Cozy Bedroom template\'i aranıyor...');
         await retry(page, async () => {
-            // Arama kutusunu bul ve "cozy bedroom" yaz
-            const searchInput = page.locator('input[placeholder*="search" i], input[type="search"]').first();
-            await searchInput.fill('cozy bedroom');
-            await page.waitForTimeout(2000); // Arama sonuçlarının yüklenmesini bekle
+            // Sayfanın tam yüklenmesini bekle
+            await page.waitForLoadState('networkidle');
             
-            // Cozy bedroom template'ini bul ve tıkla
-            const template = page.locator('.template-card, .template-item').filter({ hasText: /cozy bedroom/i }).first();
-            await template.waitFor({ state: 'visible', timeout: 30000 });
-            await template.click();
+            // Farklı selector'larla "Cozy Bedroom" template'ini ara
+            const selectors = [
+                'text="Cozy Bedroom"',
+                'text="cozy bedroom"',
+                '[title*="cozy" i][title*="bedroom" i]',
+                '.template-card:has-text("Cozy Bedroom")',
+                '.template-item:has-text("Cozy Bedroom")',
+                'div:has-text("Cozy Bedroom")'
+            ];
+            
+            let templateElement = null;
+            for (const selector of selectors) {
+                try {
+                    templateElement = page.locator(selector).first();
+                    await templateElement.waitFor({ state: 'visible', timeout: 10000 });
+                    console.log(`Cozy Bedroom template bulundu: ${selector}`);
+                    break;
+                } catch (e) {
+                    console.log(`Selector başarısız: ${selector}`);
+                    continue;
+                }
+            }
+            
+            if (!templateElement) {
+                // Eğer "Cozy Bedroom" bulunamazsa, screenshot'larda gördüğümüz template'leri dene
+                console.log('Cozy Bedroom bulunamadı, mevcut template\'ler deneniyor...');
+                const alternatives = [
+                    'text="Cozy Indoor"',
+                    'text="Minimalist Space"', 
+                    'text="Business Style"',
+                    'text="Beauty Alexander"',
+                    'text="Beauty Camille"',
+                    'text="Beauty Charlotte"',
+                    'text="Minimalist Female"',
+                    'text="Minimalist Male"'
+                ];
+                
+                for (const alt of alternatives) {
+                    try {
+                        templateElement = page.locator(alt).first();
+                        await templateElement.waitFor({ state: 'visible', timeout: 5000 });
+                        console.log(`Alternatif template bulundu: ${alt}`);
+                        break;
+                    } catch (e) {
+                        continue;
+                    }
+                }
+            }
+            
+            if (!templateElement) {
+                throw new Error('Hiçbir uygun template bulunamadı');
+            }
+            
+            await templateElement.click();
+            console.log('Template seçildi.');
         });
         
         console.log('Cozy Bedroom template\'i seçildi.');
