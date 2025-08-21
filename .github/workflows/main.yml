@@ -1,1 +1,309 @@
+name: Creati AI Automation
 
+on:
+  workflow_dispatch:
+    inputs:
+      productDescription:
+        description: 'Ürün açıklaması'
+        required: true
+        type: string
+      productImageUrl:
+        description: 'Ürün görsel URL'
+        required: true
+        type: string
+      email:
+        description: 'Creati Studio email'
+        required: true
+        type: string
+
+jobs:
+  creati-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    
+    steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install Dependencies
+      run: |
+        npm init -y
+        npm pkg set type=module
+        npm install playwright
+        npx playwright install --with-deps chromium
+      
+    - name: Create automation script
+      run: |
+        cat > creati-automation.mjs << 'EOL'
+        import { chromium } from 'playwright';
+        import https from 'https';
+        import fs from 'fs';
+
+        // Environment variables
+        const email = process.env.EMAIL;
+        const password = process.env.PASSWORD;
+        const productDescription = process.env.DESCRIPTION;
+        const productImageUrl = process.env.IMAGE_URL;
+
+        console.log('Creati AI Otomasyon başlatılıyor...');
+        console.log(`Ürün açıklaması: ${productDescription?.substring(0, 50)}...`);
+        console.log(`Görsel URL: ${productImageUrl}`);
+
+        async function takeScreenshot(page, name) {
+            try {
+                const filename = `${name}.png`;
+                await page.screenshot({ path: filename, fullPage: true });
+                console.log(`Screenshot: ${filename}`);
+            } catch (error) {
+                console.log(`Screenshot hatası: ${error.message}`);
+            }
+        }
+
+        async function downloadImage(url, filepath) {
+            return new Promise((resolve, reject) => {
+                console.log(`Görsel indiriliyor: ${url}`);
+                
+                https.get(url, (response) => {
+                    if (response.statusCode === 200) {
+                        const fileStream = fs.createWriteStream(filepath);
+                        response.pipe(fileStream);
+                        
+                        fileStream.on('finish', () => {
+                            fileStream.close();
+                            console.log(`Görsel indirildi: ${filepath}`);
+                            resolve();
+                        });
+                        
+                        fileStream.on('error', reject);
+                    } else {
+                        reject(new Error(`HTTP Error: ${response.statusCode}`));
+                    }
+                }).on('error', reject);
+            });
+        }
+
+        async function retry(page, action, attempts = 3, delay = 3000) {
+            for (let i = 0; i < attempts; i++) {
+                try {
+                    console.log(`Deneme ${i + 1}/${attempts}...`);
+                    await action();
+                    console.log(`Başarılı!`);
+                    return;
+                } catch (error) {
+                    console.log(`Hata: ${error.message}`);
+                    if (i < attempts - 1) {
+                        console.log(`${delay/1000}s bekleyip tekrar deneniyor...`);
+                        await page.waitForTimeout(delay);
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        }
+
+        async function createVideo() {
+            const browser = await chromium.launch({
+                headless: false,
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            });
+            
+            const context = await browser.newContext({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale: 'en-US'
+            });
+            
+            const page = await context.newPage();
+            await page.setViewportSize({ width: 1920, height: 1080 });
+            page.setDefaultTimeout(45000);
+
+            try {
+                console.log('\n=== OTOMASYON BAŞLIYOR ===');
+                console.log('1. Otomatik login');
+                console.log('2. Templates sayfasına git');
+                console.log('3. MANUEL: Template seç (90 saniye beklenecek)');
+                console.log('4. Otomatik: Upload + form + generate\n');
+
+                // 1. LOGIN OTOMATIK
+                console.log('ADIM 1: Login işlemi...');
+                await page.goto('https://creati.ai/', { waitUntil: 'domcontentloaded' });
+                await takeScreenshot(page, '01-homepage');
+                
+                // Go Create butonuna tıkla
+                await retry(page, async () => {
+                    await page.waitForLoadState('networkidle');
+                    const goCreateBtn = page.getByText('Go Create', { exact: true });
+                    await goCreateBtn.waitFor({ state: 'visible', timeout: 20000 });
+                    await goCreateBtn.click();
+                    await page.waitForTimeout(2000);
+                });
+
+                // Continue with email butonuna tıkla
+                await retry(page, async () => {
+                    const emailBtn = page.getByText('Continue with Email', { exact: true });
+                    await emailBtn.waitFor({ state: 'visible', timeout: 20000 });
+                    await emailBtn.click();
+                    await page.waitForTimeout(2000);
+                });
+                
+                await takeScreenshot(page, '02-login-page');
+
+                // Email ve şifre gir
+                await retry(page, async () => {
+                    await page.getByPlaceholder('Email').fill(email);
+                    await page.getByPlaceholder('Password').fill(password);
+                    await page.getByRole('button', { name: 'Continue' }).click();
+                });
+
+                // Dashboard'a yönlendirmeyi bekle
+                await page.waitForFunction(() => {
+                    const url = window.location.href;
+                    return url.includes('dashboard') || url.includes('workspace') || url.includes('home');
+                }, { timeout: 60000 });
+
+                await takeScreenshot(page, '03-logged-in');
+                console.log('Login başarılı!');
+
+                // 2. TEMPLATES SAYFASINA GİT
+                console.log('\nADIM 2: Templates sayfasına gidiliyor...');
+                await retry(page, async () => {
+                    const templatesLink = page.getByRole('link', { name: /templates/i }).first();
+                    await templatesLink.waitFor({ state: 'visible', timeout: 20000 });
+                    await templatesLink.click();
+                    await page.waitForTimeout(5000);
+                });
+
+                await takeScreenshot(page, '04-templates-page');
+                console.log('Templates sayfası yüklendi.');
+
+                // 3. MANUEL TEMPLATE SEÇİMİ - 90 SANİYE BEKLE
+                console.log('\n*** MANUEL ADIM ***');
+                console.log('ADIM 3: Template seçimi (90 saniye bekleniyor)...');
+                console.log('Şu adımları yapın:');
+                console.log('  • Bir template seçin (Cozy Bedroom, Beauty vb.)');
+                console.log('  • Template\'e tıklayın');
+                console.log('  • "Use" veya "Create" butonuna basın');
+                console.log('  • Upload sayfasına geldiğinizde bekleyin');
+                console.log('  • Otomasyon görsel yükleme ve formu doldurma işlemlerini yapacak');
+                
+                // 90 saniye manuel süre
+                for (let i = 90; i > 0; i--) {
+                    if (i % 15 === 0) {
+                        console.log(`Manuel süre kalan: ${i} saniye...`);
+                        await takeScreenshot(page, `05-manual-step-${90-i}s`);
+                    }
+                    await page.waitForTimeout(1000);
+                }
+
+                console.log('\nManuel süre bitti, otomatik kısım başlıyor...');
+                await takeScreenshot(page, '06-after-manual-selection');
+
+                // 4. GÖRSEL İNDİR
+                console.log('\nADIM 4: Ürün görseli indiriliyor...');
+                const imagePath = './product-image.jpg';
+                await downloadImage(productImageUrl, imagePath);
+
+                // 5. UPLOAD İŞLEMİ
+                console.log('\nADIM 5: Görsel upload ediliyor...');
+                await retry(page, async () => {
+                    await page.waitForLoadState('networkidle');
+                    await page.waitForTimeout(3000);
+                    
+                    // Upload product image alanını bul ve tıkla
+                    const fileChooserPromise = page.waitForEvent('filechooser');
+                    await page.getByText('Upload product image').click();
+                    const fileChooser = await fileChooserPromise;
+                    await fileChooser.setFiles(imagePath);
+                    await page.waitForTimeout(3000);
+                });
+
+                await takeScreenshot(page, '07-image-uploaded');
+
+                // 6. ÜRÜN AÇIKLAMASI
+                console.log('\nADIM 6: Ürün açıklaması giriliyor...');
+                await retry(page, async () => {
+                    await page.getByPlaceholder('Type speech text').fill(productDescription);
+                    await page.waitForTimeout(1000);
+                });
+
+                // 7. DİL AYARI
+                console.log('\nADIM 7: Dil Türkçe yapılıyor...');
+                try {
+                    await retry(page, async () => {
+                        await page.getByText('English', { exact: true }).click();
+                        await page.getByText('Turkish', { exact: true }).click();
+                        await page.waitForTimeout(1000);
+                    });
+                } catch (e) {
+                    console.log('Dil değiştirilemiyor, varsayılan dil kullanılacak');
+                }
+
+                await takeScreenshot(page, '08-form-completed');
+
+                // 8. GENERATE/CONTINUE
+                console.log('\nADIM 8: Video oluşturma başlatılıyor...');
+                await retry(page, async () => {
+                    await page.getByRole('button', { name: 'Continue' }).click();
+                    await page.waitForTimeout(5000);
+                });
+
+                await takeScreenshot(page, '09-generation-started');
+                
+                // Success indicator bekle
+                await page.waitForTimeout(5000);
+                await takeScreenshot(page, '10-final-state');
+
+                console.log('\n=== BAŞARILI ===');
+                console.log('Video oluşturma süreci başlatıldı!');
+                console.log('Otomasyon tamamlandı.');
+
+            } catch (error) {
+                console.error(`\nHATA: ${error.message}`);
+                await takeScreenshot(page, 'error-final');
+                
+                const html = await page.content();
+                fs.writeFileSync('error-page.html', html);
+                console.log('Hata sayfası kaydedildi: error-page.html');
+                
+                throw error;
+            } finally {
+                // Cleanup
+                try {
+                    if (fs.existsSync('./product-image.jpg')) {
+                        fs.unlinkSync('./product-image.jpg');
+                    }
+                } catch (e) {}
+                
+                await browser.close();
+                console.log('Browser kapatıldı.');
+            }
+        }
+
+        createVideo().catch(error => {
+            console.error('Ana hata:', error);
+            process.exit(1);
+        });
+        EOL
+        
+        echo "Automation script created: creati-automation.mjs"
+      
+    - name: Run automation
+      run: node creati-automation.mjs
+      env:
+        EMAIL: ${{ github.event.inputs.email }}
+        PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
+        DESCRIPTION: ${{ github.event.inputs.productDescription }}
+        IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
+        PLAYWRIGHT_BROWSERS_PATH: '/home/runner/.cache/ms-playwright'
+    
+    - name: Upload debug files
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-files-${{ github.run_number }}
+        path: |
+          *.png
+          *.html
+          *.log
+        retention-days: 5
