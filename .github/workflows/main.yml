@@ -2,6 +2,8 @@
 name: Creati AI Hybrid Automation
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       productDescription:
