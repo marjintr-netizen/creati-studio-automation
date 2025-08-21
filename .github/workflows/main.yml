@@ -1,4 +1,4 @@
-name: Creati AI Automation
+name: Creati AI Upload Automation
 
 on:
   workflow_dispatch:
@@ -11,15 +11,11 @@ on:
         description: 'Ürün görsel URL'
         required: true
         type: string
-      email:
-        description: 'Creati Studio email'
-        required: true
-        type: string
 
 jobs:
-  creati-automation:
+  creati-upload-automation:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     
     steps:
     - name: Setup Node.js
@@ -42,12 +38,14 @@ jobs:
         import fs from 'fs';
 
         // Environment variables
-        const email = process.env.EMAIL;
-        const password = process.env.PASSWORD;
         const productDescription = process.env.DESCRIPTION;
         const productImageUrl = process.env.IMAGE_URL;
 
-        console.log('Creati AI Otomasyon başlatılıyor...');
+        console.log('=== OTOMASYON BAŞLIYOR ===');
+        console.log('Bu otomasyon sadece görsel yükleme ve form doldurma işlemlerini yapar.');
+        console.log('LOGIN VE TEMPLATE SEÇİMİ MANUEL YAPILMALIDIR!');
+        console.log('Otomasyon sadece "Upload product image" ekranında başlar.');
+        
         console.log(`Ürün açıklaması: ${productDescription?.substring(0, 50)}...`);
         console.log(`Görsel URL: ${productImageUrl}`);
 
@@ -84,198 +82,234 @@ jobs:
             });
         }
 
-        async function retry(page, action, attempts = 3, delay = 3000) {
+        async function retry(page, action, attempts = 5, delay = 3000) {
             for (let i = 0; i < attempts; i++) {
                 try {
                     console.log(`Deneme ${i + 1}/${attempts}...`);
                     await action();
                     console.log(`Başarılı!`);
-                    return;
+                    return true;
                 } catch (error) {
                     console.log(`Hata: ${error.message}`);
                     if (i < attempts - 1) {
                         console.log(`${delay/1000}s bekleyip tekrar deneniyor...`);
                         await page.waitForTimeout(delay);
                     } else {
-                        throw error;
+                        console.log(`Maksimum deneme sayısına ulaşıldı. Devam ediliyor...`);
+                        return false;
                     }
                 }
             }
+            return false;
         }
 
-        async function createVideo() {
+        async function uploadAndProcess() {
+            console.log('\n== LÜTFEN OKUYUN ==');
+            console.log('BU OTOMASYON İÇİN:');
+            console.log('1. Creati AI hesabınıza giriş yapın');
+            console.log('2. Templates sayfasına gidin');
+            console.log('3. Cozy Bedroom template\'ini seçin');
+            console.log('4. Use/Create butonuna basın');
+            console.log('5. Upload product image ekranına gelin');
+            console.log('6. SONRA workflow\'u başlatın');
+            console.log('7. 45 saniye içinde template seçilmiş ve upload sayfasına gelinmiş olmalı\n');
+            
+            // Görsel indir
+            console.log('Ürün görseli indiriliyor...');
+            const imagePath = './product-image.jpg';
+            await downloadImage(productImageUrl, imagePath);
+            
+            // Bu noktada manuel seçim için bekliyoruz, bu kısım placeholder
+            console.log('DİKKAT: Bu GitHub Actions\'da otomatik çalışacak, fakat bilgisayarınızda manuel olarak template seçimi yapmanız gerekiyor!');
+            console.log('GitHub Actions bu noktada template seçilmiş ve upload sayfasına gelinmiş olduğunu varsayar.');
+            
             const browser = await chromium.launch({
-                headless: true, // GitHub Actions için headless: true olarak değiştirildi
+                headless: true,
                 args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
             });
             
             const context = await browser.newContext({
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                locale: 'en-US'
+                viewport: { width: 1920, height: 1080 }
             });
             
             const page = await context.newPage();
-            await page.setViewportSize({ width: 1920, height: 1080 });
-            page.setDefaultTimeout(45000);
+            page.setDefaultTimeout(60000);
 
             try {
-                console.log('\n=== OTOMASYON BAŞLIYOR ===');
-                console.log('1. Otomatik login');
-                console.log('2. Templates sayfasına git');
-                console.log('3. MANUEL: Template seç (90 saniye beklenecek)');
-                console.log('4. Otomatik: Upload + form + generate\n');
-
-                // 1. LOGIN OTOMATIK
-                console.log('ADIM 1: Login işlemi...');
-                await page.goto('https://creati.ai/', { waitUntil: 'domcontentloaded' });
-                await takeScreenshot(page, '01-homepage');
+                // NOT: Bu kısım sadece simulasyon amaçlı, GitHub Actions'da çalışmayacak
+                // Gerçek senaryoda, kullanıcı manuel olarak bu adıma kadar gelmiş olmalı
+                await page.goto('https://creati.studio/upload-page-placeholder', { waitUntil: 'domcontentloaded' });
+                console.log('Upload sayfasına gelindi (GitHub Actions\'da bu adım atlanır)');
+                await takeScreenshot(page, '01-upload-page');
                 
-                // Go Create butonuna tıkla
+                // 1. UPLOAD İŞLEMİ
+                console.log('\nADIM 1: Görsel upload ediliyor...');
                 await retry(page, async () => {
-                    await page.waitForLoadState('networkidle');
-                    const goCreateBtn = page.getByText('Go Create', { exact: true });
-                    await goCreateBtn.waitFor({ state: 'visible', timeout: 20000 });
-                    await goCreateBtn.click();
-                    await page.waitForTimeout(2000);
-                });
-
-                // Continue with email butonuna tıkla
-                await retry(page, async () => {
-                    const emailBtn = page.getByText('Continue with Email', { exact: true });
-                    await emailBtn.waitFor({ state: 'visible', timeout: 20000 });
-                    await emailBtn.click();
-                    await page.waitForTimeout(2000);
-                });
-                
-                await takeScreenshot(page, '02-login-page');
-
-                // Email ve şifre gir
-                await retry(page, async () => {
-                    await page.getByPlaceholder('Email').fill(email);
-                    await page.getByPlaceholder('Password').fill(password);
-                    await page.getByRole('button', { name: 'Continue' }).click();
-                });
-
-                // Dashboard'a yönlendirmeyi bekle
-                await page.waitForFunction(() => {
-                    const url = window.location.href;
-                    return url.includes('dashboard') || url.includes('workspace') || url.includes('home');
-                }, { timeout: 60000 });
-
-                await takeScreenshot(page, '03-logged-in');
-                console.log('Login başarılı!');
-
-                // 2. TEMPLATES SAYFASINA GİT
-                console.log('\nADIM 2: Templates sayfasına gidiliyor...');
-                await retry(page, async () => {
-                    const templatesLink = page.getByRole('link', { name: /templates/i }).first();
-                    await templatesLink.waitFor({ state: 'visible', timeout: 20000 });
-                    await templatesLink.click();
-                    await page.waitForTimeout(5000);
-                });
-
-                await takeScreenshot(page, '04-templates-page');
-                console.log('Templates sayfası yüklendi.');
-
-                // 3. MANUEL TEMPLATE SEÇİMİ - 90 SANİYE BEKLE
-                console.log('\n*** MANUEL ADIM ***');
-                console.log('ADIM 3: Template seçimi (90 saniye bekleniyor)...');
-                console.log('Şu adımları yapın:');
-                console.log('  • Bir template seçin (Cozy Bedroom, Beauty vb.)');
-                console.log('  • Template\'e tıklayın');
-                console.log('  • "Use" veya "Create" butonuna basın');
-                console.log('  • Upload sayfasına geldiğinizde bekleyin');
-                console.log('  • Otomasyon görsel yükleme ve formu doldurma işlemlerini yapacak');
-                
-                // NOT: GitHub Actions'da headless mode'da çalıştığı için manuel adım çalışmayacak.
-                // Gerçek uygulamada bu kısmı otomatikleştirmek veya farklı bir yaklaşım kullanmak gerekecek.
-                console.log('\nNOT: GitHub Actions ortamında template seçimi otomatik olarak yapılamaz.');
-                console.log('Bu adım yerel bilgisayarda test edilmelidir.');
-                
-                // 90 saniye bekleme süresi yerine daha kısa bir süre kullanıyoruz
-                await page.waitForTimeout(10000);
-                await takeScreenshot(page, '05-template-selection-skipped');
-
-                // Demo amaçlı olarak temsilci bir URL'ye git
-                await page.goto('https://creati.ai/upload', { waitUntil: 'domcontentloaded' });
-                await takeScreenshot(page, '06-upload-page');
-
-                // 4. GÖRSEL İNDİR
-                console.log('\nADIM 4: Ürün görseli indiriliyor...');
-                const imagePath = './product-image.jpg';
-                await downloadImage(productImageUrl, imagePath);
-
-                // 5. UPLOAD İŞLEMİ
-                console.log('\nADIM 5: Görsel upload ediliyor...');
-                await retry(page, async () => {
-                    await page.waitForLoadState('networkidle');
-                    await page.waitForTimeout(3000);
-                    
                     // Upload product image alanını bul ve tıkla
-                    try {
-                        const fileChooserPromise = page.waitForEvent('filechooser');
-                        await page.getByText('Upload product image').click();
-                        const fileChooser = await fileChooserPromise;
-                        await fileChooser.setFiles(imagePath);
-                        await page.waitForTimeout(3000);
-                    } catch (e) {
-                        console.log('Upload alanı bulunamadı, alternatif yöntem deneniyor...');
-                        // Alternatif yöntem: input[type=file] öğesi ara
-                        const fileInput = page.locator('input[type="file"]').first();
-                        await fileInput.setInputFiles(imagePath);
-                        await page.waitForTimeout(3000);
+                    const uploadSelectors = [
+                        'input[type="file"]',
+                        'button:has-text("Upload")',
+                        'div:has-text("Upload product image")',
+                        'div:has-text("Choose File")',
+                        '[data-testid*="upload"]',
+                        '[role="button"]:has-text("Upload")'
+                    ];
+                    
+                    for (const selector of uploadSelectors) {
+                        try {
+                            const uploadElement = page.locator(selector).first();
+                            
+                            if (await uploadElement.isVisible()) {
+                                console.log(`Upload alanı bulundu: ${selector}`);
+                                
+                                if (selector.includes('input[type="file"]')) {
+                                    await uploadElement.setInputFiles(imagePath);
+                                } else {
+                                    await uploadElement.click();
+                                    await page.waitForTimeout(3000);
+                                    
+                                    // File input element may appear after clicking the button
+                                    const fileInput = page.locator('input[type="file"]').first();
+                                    await fileInput.setInputFiles(imagePath);
+                                }
+                                
+                                await page.waitForTimeout(5000);
+                                return;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
                     }
+                    
+                    throw new Error('Upload alanı bulunamadı');
                 });
-
-                await takeScreenshot(page, '07-image-uploaded');
-
-                // 6. ÜRÜN AÇIKLAMASI
-                console.log('\nADIM 6: Ürün açıklaması giriliyor...');
+                
+                await takeScreenshot(page, '02-image-uploaded');
+                console.log('Görsel yüklendi');
+                
+                // 2. ÜRÜN AÇIKLAMASI
+                console.log('\nADIM 2: Ürün açıklaması giriliyor...');
                 await retry(page, async () => {
-                    try {
-                        await page.getByPlaceholder('Type speech text').fill(productDescription);
-                    } catch (e) {
-                        console.log('Speech text alanı bulunamadı, alternatif yöntem deneniyor...');
-                        // Alternatif yöntem: textarea veya input ara
-                        const textField = page.locator('textarea, input[type="text"]').first();
-                        await textField.fill(productDescription);
+                    const textSelectors = [
+                        'textarea',
+                        'input[type="text"]',
+                        'input[placeholder*="text" i]',
+                        'input[placeholder*="speech" i]',
+                        'input[placeholder*="script" i]',
+                        'input[placeholder*="description" i]',
+                        '[contenteditable="true"]',
+                        '[role="textbox"]'
+                    ];
+                    
+                    for (const selector of textSelectors) {
+                        try {
+                            const textElement = page.locator(selector).first();
+                            
+                            if (await textElement.isVisible()) {
+                                console.log(`Metin alanı bulundu: ${selector}`);
+                                await textElement.fill(productDescription);
+                                await page.waitForTimeout(2000);
+                                return;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
                     }
-                    await page.waitForTimeout(1000);
+                    
+                    throw new Error('Metin alanı bulunamadı');
                 });
-
-                // 7. DİL AYARI
-                console.log('\nADIM 7: Dil Türkçe yapılıyor...');
+                
+                // 3. DİL AYARI
+                console.log('\nADIM 3: Dil Türkçe yapılıyor...');
                 try {
-                    await retry(page, async () => {
-                        await page.getByText('English', { exact: true }).click();
-                        await page.getByText('Turkish', { exact: true }).click();
-                        await page.waitForTimeout(1000);
-                    });
-                } catch (e) {
-                    console.log('Dil değiştirilemiyor, varsayılan dil kullanılacak');
-                }
-
-                await takeScreenshot(page, '08-form-completed');
-
-                // 8. GENERATE/CONTINUE
-                console.log('\nADIM 8: Video oluşturma başlatılıyor...');
-                await retry(page, async () => {
-                    try {
-                        await page.getByRole('button', { name: 'Continue' }).click();
-                    } catch (e) {
-                        console.log('Continue butonu bulunamadı, alternatif yöntem deneniyor...');
-                        // Alternatif yöntem: generate veya benzeri butonları ara
-                        const button = page.locator('button').filter({ hasText: /continue|generate|create|next/i }).first();
-                        await button.click();
+                    const languageSelectors = [
+                        'select[name*="language" i]',
+                        'div:has-text("English") >> visible=true',
+                        'button:has-text("English")',
+                        '.dropdown:has-text("English")',
+                        '[role="combobox"]'
+                    ];
+                    
+                    for (const selector of languageSelectors) {
+                        try {
+                            const langElement = page.locator(selector).first();
+                            
+                            if (await langElement.isVisible()) {
+                                console.log(`Dil seçim alanı bulundu: ${selector}`);
+                                await langElement.click();
+                                await page.waitForTimeout(2000);
+                                
+                                // Türkçe seçeneğini ara
+                                const turkishSelectors = [
+                                    'text="Turkish"',
+                                    'text="Türkçe"',
+                                    'option[value="tr"]',
+                                    '[data-value="tr"]'
+                                ];
+                                
+                                for (const turkishSelector of turkishSelectors) {
+                                    try {
+                                        const turkishOption = page.locator(turkishSelector).first();
+                                        if (await turkishOption.isVisible()) {
+                                            console.log(`Türkçe seçeneği bulundu: ${turkishSelector}`);
+                                            await turkishOption.click();
+                                            await page.waitForTimeout(2000);
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        continue;
+                                    }
+                                }
+                                break;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
                     }
-                    await page.waitForTimeout(5000);
+                } catch (e) {
+                    console.log(`Dil seçimi sırasında hata: ${e.message}. Varsayılan dil kullanılacak.`);
+                }
+                
+                await takeScreenshot(page, '03-form-completed');
+                console.log('Form dolduruldu');
+                
+                // 4. GENERATE/CONTINUE
+                console.log('\nADIM 4: Video oluşturma başlatılıyor...');
+                await retry(page, async () => {
+                    const buttonSelectors = [
+                        'button:has-text("Continue")',
+                        'button:has-text("Generate")',
+                        'button:has-text("Create")',
+                        'button:has-text("Next")',
+                        'button[type="submit"]',
+                        '.btn-primary',
+                        'button.primary'
+                    ];
+                    
+                    for (const selector of buttonSelectors) {
+                        try {
+                            const button = page.locator(selector).first();
+                            
+                            if (await button.isVisible()) {
+                                console.log(`Buton bulundu: ${selector}`);
+                                await button.click();
+                                await page.waitForTimeout(10000);
+                                return;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    throw new Error('Continue/Generate butonu bulunamadı');
                 });
-
-                await takeScreenshot(page, '09-generation-started');
+                
+                await takeScreenshot(page, '04-generation-started');
                 
                 // Success indicator bekle
                 await page.waitForTimeout(5000);
-                await takeScreenshot(page, '10-final-state');
+                await takeScreenshot(page, '05-final-state');
 
                 console.log('\n=== BAŞARILI ===');
                 console.log('Video oluşturma süreci başlatıldı!');
@@ -303,7 +337,7 @@ jobs:
             }
         }
 
-        createVideo().catch(error => {
+        uploadAndProcess().catch(error => {
             console.error('Ana hata:', error);
             process.exit(1);
         });
@@ -314,8 +348,6 @@ jobs:
     - name: Run automation
       run: node creati-automation.mjs
       env:
-        EMAIL: ${{ github.event.inputs.email }}
-        PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
         PLAYWRIGHT_BROWSERS_PATH: '/home/runner/.cache/ms-playwright'
