@@ -11,6 +11,10 @@ on:
         description: 'Ürün görsel URL'
         required: true
         type: string
+      email:
+        description: 'Creati Studio email'
+        required: true
+        type: string
 
 jobs:
   creati-upload-automation:
@@ -38,14 +42,13 @@ jobs:
         import fs from 'fs';
 
         // Environment variables
+        const email = process.env.EMAIL;
+        const password = process.env.PASSWORD;
         const productDescription = process.env.DESCRIPTION;
         const productImageUrl = process.env.IMAGE_URL;
 
-        console.log('=== OTOMASYON BAŞLIYOR ===');
-        console.log('Bu otomasyon sadece görsel yükleme ve form doldurma işlemlerini yapar.');
-        console.log('LOGIN VE TEMPLATE SEÇİMİ MANUEL YAPILMALIDIR!');
-        console.log('Otomasyon sadece "Upload product image" ekranında başlar.');
-        
+        console.log('=== CREATI AI OTOMASYON BAŞLIYOR ===');
+        console.log(`Email: ${email}`);
         console.log(`Ürün açıklaması: ${productDescription?.substring(0, 50)}...`);
         console.log(`Görsel URL: ${productImageUrl}`);
 
@@ -103,26 +106,7 @@ jobs:
             return false;
         }
 
-        async function uploadAndProcess() {
-            console.log('\n== LÜTFEN OKUYUN ==');
-            console.log('BU OTOMASYON İÇİN:');
-            console.log('1. Creati AI hesabınıza giriş yapın');
-            console.log('2. Templates sayfasına gidin');
-            console.log('3. Cozy Bedroom template\'ini seçin');
-            console.log('4. Use/Create butonuna basın');
-            console.log('5. Upload product image ekranına gelin');
-            console.log('6. SONRA workflow\'u başlatın');
-            console.log('7. 45 saniye içinde template seçilmiş ve upload sayfasına gelinmiş olmalı\n');
-            
-            // Görsel indir
-            console.log('Ürün görseli indiriliyor...');
-            const imagePath = './product-image.jpg';
-            await downloadImage(productImageUrl, imagePath);
-            
-            // Bu noktada manuel seçim için bekliyoruz, bu kısım placeholder
-            console.log('DİKKAT: Bu GitHub Actions\'da otomatik çalışacak, fakat bilgisayarınızda manuel olarak template seçimi yapmanız gerekiyor!');
-            console.log('GitHub Actions bu noktada template seçilmiş ve upload sayfasına gelinmiş olduğunu varsayar.');
-            
+        async function createVideo() {
             const browser = await chromium.launch({
                 headless: true,
                 args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
@@ -137,16 +121,276 @@ jobs:
             page.setDefaultTimeout(60000);
 
             try {
-                // NOT: Bu kısım sadece simulasyon amaçlı, GitHub Actions'da çalışmayacak
-                // Gerçek senaryoda, kullanıcı manuel olarak bu adıma kadar gelmiş olmalı
-                await page.goto('https://creati.studio/upload-page-placeholder', { waitUntil: 'domcontentloaded' });
-                console.log('Upload sayfasına gelindi (GitHub Actions\'da bu adım atlanır)');
-                await takeScreenshot(page, '01-upload-page');
+                // Görsel indir
+                console.log('\nADIM 0: Ürün görseli indiriliyor...');
+                const imagePath = './product-image.jpg';
+                await downloadImage(productImageUrl, imagePath);
                 
-                // 1. UPLOAD İŞLEMİ
-                console.log('\nADIM 1: Görsel upload ediliyor...');
+                // ADIM 1: Login işlemi
+                console.log('\nADIM 1: Login işlemi...');
+                
+                // Ana sayfaya git
+                await page.goto('https://creati.ai/', { 
+                    waitUntil: 'domcontentloaded',
+                    timeout: 60000 
+                });
+                await page.waitForTimeout(5000);
+                await takeScreenshot(page, '01-homepage');
+                
+                // Go Create butonuna tıkla
                 await retry(page, async () => {
-                    // Upload product image alanını bul ve tıkla
+                    console.log('Go Create butonunu arıyor...');
+                    
+                    // Alternatif selektörler dene
+                    const selectors = [
+                        'text="Go Create"',
+                        'button:has-text("Go Create")',
+                        '.landing-page button',
+                        'a:has-text("Create")',
+                        'a:has-text("Studio")',
+                        '[href*="studio"]'
+                    ];
+                    
+                    for (const selector of selectors) {
+                        try {
+                            const button = page.locator(selector).first();
+                            if (await button.isVisible()) {
+                                console.log(`Go Create butonu bulundu: ${selector}`);
+                                await button.click();
+                                await page.waitForTimeout(5000);
+                                return;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    // Buton bulunamadıysa studio sayfasına direkt git
+                    console.log('Go Create butonu bulunamadı, direkt studio sayfasına gidiliyor');
+                    await page.goto('https://creati.studio/login', { waitUntil: 'domcontentloaded' });
+                    await page.waitForTimeout(5000);
+                });
+                
+                await takeScreenshot(page, '02-login-page');
+                
+                // Continue with email butonuna tıkla
+                await retry(page, async () => {
+                    console.log('Continue with Email butonunu arıyor...');
+                    
+                    const selectors = [
+                        'text="Continue with Email"',
+                        'button:has-text("Continue with Email")',
+                        '.auth-options >> text=Email',
+                        'button:has-text("Email")',
+                        'a:has-text("Email")'
+                    ];
+                    
+                    for (const selector of selectors) {
+                        try {
+                            const button = page.locator(selector).first();
+                            if (await button.isVisible()) {
+                                console.log(`Email butonu bulundu: ${selector}`);
+                                await button.click();
+                                await page.waitForTimeout(5000);
+                                return;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    // Email input alanı doğrudan görünüyorsa buton aramaya gerek yok
+                    if (await page.locator('input[type="email"]').isVisible()) {
+                        console.log('Email formu zaten görünür durumda');
+                        return;
+                    }
+                    
+                    throw new Error('Continue with Email butonu bulunamadı');
+                });
+                
+                // Email ve şifre gir
+                await retry(page, async () => {
+                    console.log('Email ve şifre giriyor...');
+                    
+                    await page.locator('input[type="email"]').fill(email);
+                    await page.waitForTimeout(1000);
+                    
+                    const passwordInput = page.locator('input[type="password"]');
+                    await passwordInput.fill(password);
+                    await page.waitForTimeout(1000);
+                    
+                    // Login/Continue butonunu bul
+                    const buttonSelectors = [
+                        'button:has-text("Log in")',
+                        'button:has-text("Continue")',
+                        'button:has-text("Sign in")',
+                        'button[type="submit"]',
+                        'form button'
+                    ];
+                    
+                    for (const selector of buttonSelectors) {
+                        try {
+                            const button = page.locator(selector).first();
+                            if (await button.isVisible()) {
+                                console.log(`Login butonu bulundu: ${selector}`);
+                                await button.click();
+                                break;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    // Dashboard'a yönlendirmeyi bekle
+                    await page.waitForTimeout(10000);
+                });
+                
+                await takeScreenshot(page, '03-logged-in');
+                console.log('Login işlemi tamamlandı');
+                
+                // ADIM 2: Templates sayfasına git
+                console.log('\nADIM 2: Templates sayfasına git');
+                
+                // Templates sayfasına gitmeyi dene
+                await retry(page, async () => {
+                    console.log('Templates linkini arıyor...');
+                    
+                    const selectors = [
+                        'a:has-text("Templates")',
+                        'nav >> text=Templates',
+                        '[href*="templates"]',
+                        'a:has-text("Browse")',
+                        'button:has-text("Templates")'
+                    ];
+                    
+                    for (const selector of selectors) {
+                        try {
+                            const link = page.locator(selector).first();
+                            if (await link.isVisible()) {
+                                console.log(`Templates linki bulundu: ${selector}`);
+                                await link.click();
+                                await page.waitForTimeout(10000);
+                                return;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    // Link bulunamadıysa doğrudan templates sayfasına git
+                    console.log('Templates linki bulunamadı, doğrudan templates sayfasına gidiliyor');
+                    await page.goto('https://creati.studio/templates', { waitUntil: 'domcontentloaded' });
+                    await page.waitForTimeout(10000);
+                });
+                
+                await takeScreenshot(page, '04-templates-page');
+                console.log('Templates sayfasına erişildi');
+                
+                // ADIM 3: Cozy Bedroom Template'i Bul
+                console.log('\nADIM 3: Cozy Bedroom template\'ini arıyor...');
+                
+                // Cozy Bedroom template'ini aramayı dene
+                let templateFound = await retry(page, async () => {
+                    const selectors = [
+                        'text="Cozy Bedroom"',
+                        'text="bedroom"',
+                        'text="Bedroom"',
+                        'text="cozy"',
+                        'text="Cozy"'
+                    ];
+                    
+                    for (const selector of selectors) {
+                        try {
+                            const template = page.locator(selector).first();
+                            if (await template.isVisible()) {
+                                console.log(`Template bulundu: ${selector}`);
+                                await template.click();
+                                await page.waitForTimeout(5000);
+                                
+                                // Use butonuna bas
+                                const useSelectors = [
+                                    'button:has-text("Use")',
+                                    'button:has-text("Create")',
+                                    'button:has-text("Select")',
+                                    'button.primary'
+                                ];
+                                
+                                for (const useSelector of useSelectors) {
+                                    try {
+                                        const useButton = page.locator(useSelector).first();
+                                        if (await useButton.isVisible()) {
+                                            console.log(`Use butonu bulundu: ${useSelector}`);
+                                            await useButton.click();
+                                            await page.waitForTimeout(10000);
+                                            return true;
+                                        }
+                                    } catch (e) {
+                                        continue;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    throw new Error('Cozy Bedroom template bulunamadı');
+                });
+                
+                // Template bulunamadıysa, rastgele bir template seç
+                if (!templateFound) {
+                    console.log('Cozy Bedroom bulunamadı, rastgele bir template seçiliyor...');
+                    
+                    await retry(page, async () => {
+                        // Herhangi bir template seç
+                        const cards = await page.locator('.card, .template-card, article, [role="article"]').all();
+                        
+                        if (cards.length > 0) {
+                            const randomIndex = Math.floor(Math.random() * Math.min(5, cards.length));
+                            console.log(`Rastgele template seçiliyor: ${randomIndex+1}/${cards.length}`);
+                            
+                            await cards[randomIndex].click();
+                            await page.waitForTimeout(5000);
+                            
+                            // Use butonuna bas
+                            const useSelectors = [
+                                'button:has-text("Use")',
+                                'button:has-text("Create")',
+                                'button:has-text("Select")',
+                                'button.primary'
+                            ];
+                            
+                            for (const useSelector of useSelectors) {
+                                try {
+                                    const useButton = page.locator(useSelector).first();
+                                    if (await useButton.isVisible()) {
+                                        console.log(`Use butonu bulundu: ${useSelector}`);
+                                        await useButton.click();
+                                        await page.waitForTimeout(10000);
+                                        return true;
+                                    }
+                                } catch (e) {
+                                    continue;
+                                }
+                            }
+                            
+                            throw new Error('Use butonu bulunamadı');
+                        } else {
+                            throw new Error('Hiç template bulunamadı');
+                        }
+                    });
+                }
+                
+                await takeScreenshot(page, '05-template-selected');
+                console.log('Template seçildi');
+                
+                // ADIM 4: Upload ve Form Doldurma
+                console.log('\nADIM 4: Upload ve form doldurma');
+                
+                // Upload işlemi
+                await retry(page, async () => {
+                    console.log('Upload alanını arıyor...');
+                    
                     const uploadSelectors = [
                         'input[type="file"]',
                         'button:has-text("Upload")',
@@ -185,12 +429,13 @@ jobs:
                     throw new Error('Upload alanı bulunamadı');
                 });
                 
-                await takeScreenshot(page, '02-image-uploaded');
+                await takeScreenshot(page, '06-image-uploaded');
                 console.log('Görsel yüklendi');
                 
-                // 2. ÜRÜN AÇIKLAMASI
-                console.log('\nADIM 2: Ürün açıklaması giriliyor...');
+                // Açıklama girme
                 await retry(page, async () => {
+                    console.log('Açıklama alanını arıyor...');
+                    
                     const textSelectors = [
                         'textarea',
                         'input[type="text"]',
@@ -220,9 +465,10 @@ jobs:
                     throw new Error('Metin alanı bulunamadı');
                 });
                 
-                // 3. DİL AYARI
-                console.log('\nADIM 3: Dil Türkçe yapılıyor...');
+                // Dil seçimi
                 try {
+                    console.log('Dil seçim alanını arıyor...');
+                    
                     const languageSelectors = [
                         'select[name*="language" i]',
                         'div:has-text("English") >> visible=true',
@@ -271,12 +517,13 @@ jobs:
                     console.log(`Dil seçimi sırasında hata: ${e.message}. Varsayılan dil kullanılacak.`);
                 }
                 
-                await takeScreenshot(page, '03-form-completed');
+                await takeScreenshot(page, '07-form-completed');
                 console.log('Form dolduruldu');
                 
-                // 4. GENERATE/CONTINUE
-                console.log('\nADIM 4: Video oluşturma başlatılıyor...');
+                // Continue / Generate butonuna tıklama
                 await retry(page, async () => {
+                    console.log('Continue/Generate butonunu arıyor...');
+                    
                     const buttonSelectors = [
                         'button:has-text("Continue")',
                         'button:has-text("Generate")',
@@ -305,23 +552,25 @@ jobs:
                     throw new Error('Continue/Generate butonu bulunamadı');
                 });
                 
-                await takeScreenshot(page, '04-generation-started');
+                await takeScreenshot(page, '08-generation-started');
+                console.log('Video oluşturma başlatıldı');
                 
-                // Success indicator bekle
-                await page.waitForTimeout(5000);
-                await takeScreenshot(page, '05-final-state');
-
+                // İşlem tamamlandı
                 console.log('\n=== BAŞARILI ===');
                 console.log('Video oluşturma süreci başlatıldı!');
                 console.log('Otomasyon tamamlandı.');
-
+                
             } catch (error) {
                 console.error(`\nHATA: ${error.message}`);
                 await takeScreenshot(page, 'error-final');
                 
-                const html = await page.content();
-                fs.writeFileSync('error-page.html', html);
-                console.log('Hata sayfası kaydedildi: error-page.html');
+                try {
+                    const html = await page.content();
+                    fs.writeFileSync('error-page.html', html);
+                    console.log('Hata sayfası kaydedildi: error-page.html');
+                } catch (e) {
+                    console.log(`Sayfa içeriği kaydedilemedi: ${e.message}`);
+                }
                 
                 throw error;
             } finally {
@@ -330,14 +579,16 @@ jobs:
                     if (fs.existsSync('./product-image.jpg')) {
                         fs.unlinkSync('./product-image.jpg');
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.log(`Görsel dosyası silinemedi: ${e.message}`);
+                }
                 
                 await browser.close();
                 console.log('Browser kapatıldı.');
             }
         }
 
-        uploadAndProcess().catch(error => {
+        createVideo().catch(error => {
             console.error('Ana hata:', error);
             process.exit(1);
         });
@@ -348,6 +599,8 @@ jobs:
     - name: Run automation
       run: node creati-automation.mjs
       env:
+        EMAIL: ${{ github.event.inputs.email }}
+        PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
         DESCRIPTION: ${{ github.event.inputs.productDescription }}
         IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
         PLAYWRIGHT_BROWSERS_PATH: '/home/runner/.cache/ms-playwright'
