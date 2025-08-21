@@ -85,27 +85,6 @@ jobs:
             });
         }
 
-        async function retry(page, action, attempts = 5, delay = 3000) {
-            for (let i = 0; i < attempts; i++) {
-                try {
-                    console.log(`Deneme ${i + 1}/${attempts}...`);
-                    await action();
-                    console.log(`Başarılı!`);
-                    return true;
-                } catch (error) {
-                    console.log(`Hata: ${error.message}`);
-                    if (i < attempts - 1) {
-                        console.log(`${delay/1000}s bekleyip tekrar deneniyor...`);
-                        await page.waitForTimeout(delay);
-                    } else {
-                        console.log(`Maksimum deneme sayısına ulaşıldı. Devam ediliyor...`);
-                        return false;
-                    }
-                }
-            }
-            return false;
-        }
-
         async function run() {
             // Görsel indir
             console.log('\nADIM 1: Ürün görseli indiriliyor...');
@@ -124,163 +103,56 @@ jobs:
             });
             
             const page = await context.newPage();
-            page.setDefaultTimeout(60000); // 60 saniye timeout
+            page.setDefaultTimeout(90000); // 90 saniye timeout
             
             try {
                 // Login
                 console.log('\nADIM 2: Giriş yapılıyor...');
-                
-                // Direkt login sayfasına git
-                await page.goto('https://creati.studio/login', { 
-                    waitUntil: 'domcontentloaded',
-                    timeout: 60000 
-                });
+                await page.goto('https://creati.studio/login', { waitUntil: 'domcontentloaded' });
                 await takeScreenshot(page, '01-login-page');
-                await page.waitForTimeout(5000);
                 
-                // Email input alanını bul
-                await retry(page, async () => {
-                    console.log('Email ve şifre alanları aranıyor...');
-                    
-                    // Farklı selektörleri dene
-                    const emailSelectors = [
-                        'input[type="email"]',
-                        'input[placeholder*="email" i]',
-                        'input[name*="email" i]',
-                        'form input:first-child',
-                        'input.email',
-                        '[data-testid*="email"]'
-                    ];
-                    
-                    let emailInput = null;
-                    for (const selector of emailSelectors) {
-                        try {
-                            emailInput = page.locator(selector).first();
-                            if (await emailInput.isVisible()) {
-                                console.log(`Email alanı bulundu: ${selector}`);
-                                break;
-                            }
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                    
-                    if (!emailInput || !(await emailInput.isVisible())) {
-                        throw new Error('Email alanı bulunamadı');
-                    }
-                    
-                    // Email gir
-                    await emailInput.fill(email);
-                    await page.waitForTimeout(1000);
-                    
-                    // Şifre gir
-                    const passwordSelectors = [
-                        'input[type="password"]',
-                        'input[placeholder*="password" i]',
-                        'input[name*="password" i]',
-                        'form input:nth-child(2)',
-                        'input.password',
-                        '[data-testid*="password"]'
-                    ];
-                    
-                    let passwordInput = null;
-                    for (const selector of passwordSelectors) {
-                        try {
-                            passwordInput = page.locator(selector).first();
-                            if (await passwordInput.isVisible()) {
-                                console.log(`Şifre alanı bulundu: ${selector}`);
-                                break;
-                            }
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                    
-                    if (!passwordInput || !(await passwordInput.isVisible())) {
-                        throw new Error('Şifre alanı bulunamadı');
-                    }
-                    
-                    await passwordInput.fill(password);
-                    await page.waitForTimeout(1000);
-                    
-                    // Login butonuna bas
-                    const buttonSelectors = [
-                        'button[type="submit"]',
-                        'button:has-text("Log in")',
-                        'button:has-text("Sign in")',
-                        'button:has-text("Continue")',
-                        'input[type="submit"]',
-                        'form button'
-                    ];
-                    
-                    let loginButton = null;
-                    for (const selector of buttonSelectors) {
-                        try {
-                            loginButton = page.locator(selector).first();
-                            if (await loginButton.isVisible()) {
-                                console.log(`Login butonu bulundu: ${selector}`);
-                                break;
-                            }
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                    
-                    if (!loginButton || !(await loginButton.isVisible())) {
-                        throw new Error('Login butonu bulunamadı');
-                    }
-                    
-                    await loginButton.click();
-                });
+                // Email girişi
+                console.log('Email giriliyor...');
+                try {
+                    await page.waitForSelector('input[type="email"]', { timeout: 30000 });
+                    await page.fill('input[type="email"]', email);
+                    await page.fill('input[type="password"]', password);
+                    await page.click('button[type="submit"]');
+                } catch (error) {
+                    console.log(`Login form hatası: ${error.message}`);
+                    throw error;
+                }
                 
-                // Login sonrası bekleme
-                console.log('Login butonu tıklandı, dashboard bekleniyor...');
-                await page.waitForTimeout(15000);
+                // Login başarılı mı kontrol et
+                await page.waitForTimeout(10000);
                 await takeScreenshot(page, '02-after-login');
                 
-                // Manuel olarak Cozy Bedroom template'ine kadar gelindiği varsayılıyor
-                console.log('\nNOT: Bu GitHub Actions ortamında çalışıyor.');
-                console.log('Gerçek kullanımda, bu noktada siz manuel olarak:');
-                console.log('1. Templates sayfasına gideceksiniz');
-                console.log('2. Cozy Bedroom template\'ini seçeceksiniz');
-                console.log('3. "Upload product image" ekranına geleceksiniz');
-                console.log('4. Daha sonra bu otomasyonu başlatacaksınız.\n');
+                // MANUEL ADIMLAR İÇİN BİLGİLENDİRME
+                console.log('\nNOT: GitHub Actions ortamında otomatik çalışıyor.');
+                console.log('MANUEL ADIMLAR (gerçek ortamda):');
+                console.log('1. Templates sayfasına git');
+                console.log('2. Cozy Bedroom template\'ini seç');
+                console.log('3. "Upload product image" ekranına gel');
+                console.log('4. Otomasyonu bu noktada başlat');
                 
-                // Upload product image aşaması için bekle
-                console.log('\nADIM 3: Upload product image ve form doldurma...');
-                await page.waitForTimeout(5000);
+                // 3. GÖRSEL YÜKLEME - TÜM OLASI SELEKTÖRLERİ DENE
+                console.log('\nADIM 3: Görsel yükleniyor...');
                 
-                // Upload butonuna tıkla
-                console.log('Görsel yükleniyor...');
+                // 3.1 Doğrudan input[type="file"]
                 try {
-                    // Upload butonunu bul
-                    const uploadSelectors = [
-                        'button:has-text("Upload product image")',
-                        'div:has-text("Upload product image")',
-                        'button:has-text("Upload")',
-                        'div:has-text("Upload")',
-                        'input[type="file"]',
-                        '[data-testid*="upload"]'
-                    ];
+                    console.log('Yöntem 1: Doğrudan file input alanı');
                     
-                    let uploadButton = null;
-                    for (const selector of uploadSelectors) {
+                    // Sayfadaki tüm input elementlerini bul
+                    const inputs = await page.$$('input');
+                    let fileInputFound = false;
+                    
+                    for (const input of inputs) {
                         try {
-                            uploadButton = page.locator(selector).first();
-                            if (await uploadButton.isVisible()) {
-                                console.log(`Upload butonu bulundu: ${selector}`);
-                                
-                                if (selector.includes('input[type="file"]')) {
-                                    await uploadButton.setInputFiles(imagePath);
-                                } else {
-                                    await uploadButton.click();
-                                    await page.waitForTimeout(3000);
-                                    
-                                    // File chooser'ı bekle
-                                    const fileChooser = await page.waitForEvent('filechooser', { timeout: 10000 });
-                                    await fileChooser.setFiles(imagePath);
-                                }
-                                
+                            const type = await input.getAttribute('type');
+                            if (type === 'file') {
+                                console.log('File input alanı bulundu');
+                                await input.setInputFiles(imagePath);
+                                fileInputFound = true;
                                 break;
                             }
                         } catch (e) {
@@ -288,147 +160,180 @@ jobs:
                         }
                     }
                     
-                    if (!uploadButton || !(await uploadButton.isVisible())) {
-                        throw new Error('Upload butonu bulunamadı');
+                    if (!fileInputFound) {
+                        throw new Error('File input alanı bulunamadı');
                     }
-                } catch (error) {
-                    console.log('Normal upload başarısız, doğrudan file input kullanılıyor...');
+                } catch (error1) {
+                    console.log(`Yöntem 1 başarısız: ${error1.message}`);
                     
-                    // Doğrudan file input alanını bul
-                    const fileInput = page.locator('input[type="file"]').first();
-                    await fileInput.setInputFiles(imagePath);
+                    // 3.2 Upload butonu ve file chooser
+                    try {
+                        console.log('Yöntem 2: Upload butonu + file chooser');
+                        
+                        // Upload product image butonunu bul
+                        const uploadButton = await page.locator('text="Upload product image"').first();
+                        await uploadButton.click();
+                        await page.waitForTimeout(2000);
+                        
+                        // File chooser'ı bekle
+                        const fileChooser = await page.waitForEvent('filechooser', { timeout: 10000 });
+                        await fileChooser.setFiles(imagePath);
+                    } catch (error2) {
+                        console.log(`Yöntem 2 başarısız: ${error2.message}`);
+                        
+                        // 3.3 Alternatif selektörler
+                        try {
+                            console.log('Yöntem 3: Alternatif selektörler');
+                            
+                            const selectors = [
+                                'button:has-text("Upload")',
+                                'div:has-text("Upload product image")',
+                                'div.upload-area',
+                                '[aria-label="Upload"]',
+                                '.upload-button'
+                            ];
+                            
+                            for (const selector of selectors) {
+                                try {
+                                    const element = await page.$(selector);
+                                    if (element) {
+                                        await element.click();
+                                        await page.waitForTimeout(2000);
+                                        
+                                        // File chooser'ı bekle
+                                        const fileChooser = await page.waitForEvent('filechooser', { timeout: 5000 });
+                                        await fileChooser.setFiles(imagePath);
+                                        console.log(`${selector} selektörü ile yükleme başarılı`);
+                                        break;
+                                    }
+                                } catch (e) {
+                                    continue;
+                                }
+                            }
+                        } catch (error3) {
+                            console.log(`Yöntem 3 başarısız: ${error3.message}`);
+                            throw new Error('Hiçbir görsel yükleme yöntemi başarılı olmadı');
+                        }
+                    }
                 }
                 
                 await page.waitForTimeout(5000);
                 await takeScreenshot(page, '03-image-uploaded');
-                console.log('Görsel başarıyla yüklendi!');
+                console.log('Görsel yüklendi!');
                 
-                // Ürün açıklaması gir
-                console.log('\nÜrün açıklaması giriliyor...');
-                await retry(page, async () => {
+                // 4. ÜRÜN AÇIKLAMASI
+                console.log('\nADIM 4: Ürün açıklaması giriliyor...');
+                
+                try {
+                    // Metin alanını bul
                     const textSelectors = [
                         'textarea',
-                        'input[placeholder*="text" i]',
-                        'input[placeholder*="speech" i]',
-                        'input[placeholder*="description" i]',
+                        'input[placeholder*="speech text"]',
+                        'input[placeholder*="text"]',
                         'input[type="text"]',
                         '[contenteditable="true"]'
                     ];
                     
-                    let textInput = null;
                     for (const selector of textSelectors) {
                         try {
-                            textInput = page.locator(selector).first();
-                            if (await textInput.isVisible()) {
-                                console.log(`Metin alanı bulundu: ${selector}`);
+                            const textField = await page.$(selector);
+                            if (textField) {
+                                await textField.fill(productDescription);
+                                console.log(`${selector} ile metin girildi`);
                                 break;
                             }
                         } catch (e) {
                             continue;
                         }
                     }
-                    
-                    if (!textInput || !(await textInput.isVisible())) {
-                        throw new Error('Metin alanı bulunamadı');
-                    }
-                    
-                    await textInput.fill(productDescription);
-                });
+                } catch (error) {
+                    console.log(`Metin girme hatası: ${error.message}`);
+                }
                 
                 await page.waitForTimeout(2000);
                 
-                // Dili Türkçe yap
-                console.log('\nDil Türkçe yapılıyor...');
+                // 5. DİL AYARI
+                console.log('\nADIM 5: Dil Türkçe yapılıyor...');
+                
                 try {
-                    // English butonu veya dropdown'ı bul
-                    const languageSelectors = [
-                        'div:has-text("English")',
+                    // English butonunu bul
+                    const englishSelectors = [
+                        'text="English"',
                         'button:has-text("English")',
-                        'select[id*="language"]',
-                        '[data-testid*="language"]'
+                        'div:has-text("English")',
+                        'select[name*="language"]'
                     ];
                     
-                    let languageElement = null;
-                    for (const selector of languageSelectors) {
+                    for (const selector of englishSelectors) {
                         try {
-                            languageElement = page.locator(selector).first();
-                            if (await languageElement.isVisible()) {
-                                console.log(`Dil seçici bulundu: ${selector}`);
+                            const englishElement = await page.$(selector);
+                            if (englishElement) {
+                                await englishElement.click();
+                                await page.waitForTimeout(2000);
+                                
+                                // Turkish seçeneğini bul
+                                const turkishSelectors = [
+                                    'text="Turkish"',
+                                    'div:has-text("Turkish")',
+                                    'option[value="tr"]'
+                                ];
+                                
+                                for (const turkishSelector of turkishSelectors) {
+                                    try {
+                                        const turkishElement = await page.$(turkishSelector);
+                                        if (turkishElement) {
+                                            await turkishElement.click();
+                                            console.log('Dil Türkçe yapıldı');
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        continue;
+                                    }
+                                }
+                                
                                 break;
                             }
                         } catch (e) {
                             continue;
                         }
                     }
-                    
-                    if (languageElement && await languageElement.isVisible()) {
-                        await languageElement.click();
-                        await page.waitForTimeout(2000);
-                        
-                        // Turkish seçeneğini bul
-                        const turkishSelectors = [
-                            'div:has-text("Turkish")',
-                            'option:has-text("Turkish")',
-                            '[data-value="tr"]',
-                            '[value="tr"]',
-                            'li:has-text("Turkish")'
-                        ];
-                        
-                        for (const selector of turkishSelectors) {
-                            try {
-                                const turkishOption = page.locator(selector).first();
-                                if (await turkishOption.isVisible()) {
-                                    console.log(`Türkçe seçeneği bulundu: ${selector}`);
-                                    await turkishOption.click();
-                                    break;
-                                }
-                            } catch (e) {
-                                continue;
-                            }
-                        }
-                    } else {
-                        console.log('Dil seçici bulunamadı, varsayılan dil kullanılacak');
-                    }
                 } catch (error) {
-                    console.log(`Dil değiştirme hatası: ${error.message}. Varsayılan dil kullanılacak.`);
+                    console.log(`Dil değiştirme hatası: ${error.message}`);
                 }
                 
                 await page.waitForTimeout(2000);
                 await takeScreenshot(page, '04-form-completed');
                 
-                // Continue butonuna bas
-                console.log('\nContinue butonuna basılıyor...');
-                await retry(page, async () => {
+                // 6. CONTINUE BUTONU
+                console.log('\nADIM 6: Continue butonuna basılıyor...');
+                
+                try {
+                    // Continue butonunu bul
                     const buttonSelectors = [
                         'button:has-text("Continue")',
                         'button:has-text("Generate")',
                         'button:has-text("Create")',
                         'button[type="submit"]',
-                        'button.primary',
                         '.btn-primary'
                     ];
                     
-                    let continueButton = null;
                     for (const selector of buttonSelectors) {
                         try {
-                            continueButton = page.locator(selector).first();
-                            if (await continueButton.isVisible()) {
-                                console.log(`Continue butonu bulundu: ${selector}`);
+                            const button = await page.$(selector);
+                            if (button) {
+                                await button.click();
+                                console.log(`${selector} ile Continue butonuna basıldı`);
                                 break;
                             }
                         } catch (e) {
                             continue;
                         }
                     }
-                    
-                    if (!continueButton || !(await continueButton.isVisible())) {
-                        throw new Error('Continue butonu bulunamadı');
-                    }
-                    
-                    await continueButton.click();
-                });
+                } catch (error) {
+                    console.log(`Continue butonu hatası: ${error.message}`);
+                }
                 
-                await page.waitForTimeout(5000);
+                await page.waitForTimeout(10000);
                 await takeScreenshot(page, '05-finished');
                 
                 console.log('\n=== BAŞARILI ===');
@@ -437,7 +342,7 @@ jobs:
                 
             } catch (error) {
                 console.error(`\nHATA: ${error.message}`);
-                await takeScreenshot(page, 'error');
+                await takeScreenshot(page, 'error-final');
                 throw error;
             } finally {
                 // Temizlik
