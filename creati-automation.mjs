@@ -92,25 +92,59 @@ async function createVideo() {
     page.setDefaultTimeout(60000);
 
     try {
-        // 1. ANA SAYFAYA GİT
-        console.log('1. Creati Studio ana sayfasına gidiliyor...');
-        await page.goto('https://www.creati.studio/', { waitUntil: 'domcontentloaded' });
-        await takeScreenshot(page, '01-main-page-loaded');
-        console.log('Ana sayfa yüklendi.');
+        // 1. DİREKT LOGİN SAYFASINA GİT
+        console.log('1. Creati Studio login sayfasına gidiliyor...');
+        await page.goto('https://www.creati.studio/login', { waitUntil: 'domcontentloaded' });
+        await takeScreenshot(page, '01-login-page-loaded');
+        console.log('Login sayfası yüklendi.');
+        
+        // DEBUGGING: Sayfadaki tüm butonları listele
+        console.log('🔍 Sayfadaki butonlar kontrol ediliyor...');
+        const buttons = await page.locator('button, div[class*="cursor-pointer"], [role="button"]').all();
+        for (let i = 0; i < Math.min(buttons.length, 10); i++) {
+            try {
+                const text = await buttons[i].textContent();
+                const classes = await buttons[i].getAttribute('class');
+                console.log(`Buton ${i}: "${text?.trim()}" | Classes: ${classes}`);
+            } catch (e) {
+                console.log(`Buton ${i}: Okunamadı`);
+            }
+        }
 
-        // 2. LOGIN AKIŞI - Güncellenmiş selector'lar
+        // 2. "CONTINUE WITH EMAIL" BUTONUNA TIKLA
+        console.log('2. "Continue with email" butonu aranıyor...');
         await retry(page, async () => {
-            console.log('Login akışı başlatılıyor...');
+            // Sayfanın tam yüklenmesini bekle
+            await page.waitForLoadState('networkidle');
             
-            // Sayfadaki "Continue with email" butonunu direkt bulmaya çalış
-            const emailButton = page.locator('text="Continue with email"').first();
-            await emailButton.waitFor({ state: 'visible', timeout: 30000 });
+            // Farklı selector'ları dene
+            const selectors = [
+                'text="Continue with email"',
+                '[class*="continue"], [class*="email"]',
+                'button:has-text("Continue with email")',
+                'div:has-text("Continue with email")',
+                '.cursor-pointer:has-text("email")'
+            ];
             
-            console.log('"Continue with email" butonu bulundu. Tıklanıyor...');
+            let emailButton = null;
+            for (const selector of selectors) {
+                try {
+                    emailButton = page.locator(selector).first();
+                    await emailButton.waitFor({ state: 'visible', timeout: 5000 });
+                    console.log(`Email butonu bulundu: ${selector}`);
+                    break;
+                } catch (e) {
+                    console.log(`Selector başarısız: ${selector}`);
+                    continue;
+                }
+            }
+            
+            if (!emailButton) {
+                throw new Error('Continue with email butonu bulunamadı');
+            }
+            
             await emailButton.click();
-            
-            // Login formunun açılmasını bekle
-            await page.waitForSelector('input[type="email"], input[placeholder*="email" i]', { timeout: 30000 });
+            console.log('Email butonu tıklandı.');
         });
         
         console.log('✅ Login akışının ilk adımı başarıyla geçildi!');
