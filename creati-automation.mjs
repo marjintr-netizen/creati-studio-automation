@@ -13,9 +13,9 @@ console.log('Creati Studio automation başlatılıyor...');
 async function takeScreenshot(page, name) {
     try {
         await page.screenshot({ path: `debug-${name}.png`, fullPage: true });
-        console.log(`Screenshot alındı: debug-${name}.png`);
+        console.log(`✅ Screenshot alındı: debug-${name}.png`);
     } catch (error) {
-        console.log(`Screenshot alınamadı: ${error.message}`);
+        console.log(`⚠️ Screenshot alınamadı: ${error.message}`);
     }
 }
 
@@ -46,65 +46,69 @@ async function createVideo() {
     });
     
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+      // Coğrafi kısıtlamaları veya pop-up'ları önlemek için
+      locale: 'en-US' 
     });
     
     const page = await context.newPage();
     await page.setViewportSize({ width: 1920, height: 1080 });
     
-    // Genel zaman aşımını biraz daha artıralım
-    page.setDefaultTimeout(40000);
+    // Zaman aşımlarını genel olarak artıralım, GitHub Actions yavaş olabilir
+    page.setDefaultTimeout(60000); // 60 saniye
 
     try {
-        // 1. LOGIN İŞLEMİ
-        console.log('1. Creati Studio login sayfasına gidiliyor');
-        await page.goto('https://www.creati.studio/login', { waitUntil: 'networkidle' });
-        await takeScreenshot(page, '01-login-page-loaded');
-        console.log('Login sayfası yüklendi.');
+        // 1. ANA SAYFAYA GİT VE "GO CREATE" BUTONUNA TIKLA
+        console.log('1. Creati Studio ana sayfasına gidiliyor...');
+        await page.goto('https://www.creati.studio/', { waitUntil: 'networkidle' });
+        await takeScreenshot(page, '01-main-page');
+        console.log('Ana sayfa yüklendi.');
 
-        // --- SON ÇÖZÜM: ZORLA BEKLEME VE TIKLAMA ---
-        console.log('Sayfanın tam oturması için 3 saniye bekleniyor...');
-        await page.waitForTimeout(3000); // 3 saniye bekleme ekliyoruz
+        console.log('"Go Create" butonu aranıyor...');
+        // "Go Create" bir link olduğu için getByRole('link') daha doğru bir seçici olabilir.
+        const goCreateButton = page.getByRole('link', { name: /Go Create/i });
+        await goCreateButton.waitFor({ state: 'visible', timeout: 30000 });
+        console.log('"Go Create" butonu bulundu. Tıklanıyor...');
+        await goCreateButton.click();
+        
+        // Tıkladıktan sonra yeni sayfanın yüklenmesini bekle
+        console.log('Login/Signup sayfasının yüklenmesi bekleniyor...');
+        // Yeni sayfada "Continue with email" butonunun görünmesini bekleyerek sayfanın yüklendiğinden emin olalım
+        await page.waitForSelector('button:has-text("Continue with email")');
+        console.log('Login/Signup sayfası yüklendi.');
+        await takeScreenshot(page, '02-after-go-create');
 
-        console.log('"Continue with email" butonu aranıyor ve zorla tıklanacak...');
+        // 2. LOGIN İŞLEMİ
+        console.log('2. "Continue with email" butonu aranıyor...');
         const continueWithEmailButton = page.getByRole('button', { name: /Continue with email/i });
-        
-        // force: true parametresi, Playwright'in normalde yaptığı "tıklanabilir mi?"
-        // kontrollerini atlayarak doğrudan tıklamasını sağlar.
-        await continueWithEmailButton.click({ force: true, timeout: 10000 });
-        
+        await continueWithEmailButton.waitFor({ state: 'visible' });
+        await continueWithEmailButton.click();
         console.log('"Continue with email" butonuna tıklandı.');
-        await takeScreenshot(page, '01b-after-continue-click');
+        await takeScreenshot(page, '03-after-continue-with-email');
         
-        // Artık e-posta alanı görünür olmalı
-        console.log('Email alanı bekleniyor...');
-        const emailInput = page.locator('input[type="email"]');
-        await emailInput.waitFor({ state: 'visible' });
-        console.log('Email alanı bulundu.');
-        
-        await emailInput.fill(email);
+        console.log('Email ve Şifre alanları dolduruluyor...');
+        await page.locator('input[type="email"]').fill(email);
         await page.locator('input[type="password"]').fill(password);
-        await takeScreenshot(page, '02-login-filled');
+        await takeScreenshot(page, '04-login-filled');
 
-        // Bu butonu da daha sağlam bir seçici ile bulalım
         await page.getByRole('button', { name: /LOG IN\/SIGN UP/i }).click();
-        console.log('Login butonu tıklandı');
+        console.log('Login butonu tıklandı.');
 
-        await page.waitForSelector('text=Home', { timeout: 20000 });
-        console.log('Başarıyla giriş yapıldı, dashboard yüklendi');
-        await takeScreenshot(page, '03-after-login');
+        // Dashboard'un yüklendiğini doğrula
+        await page.waitForURL('**/dashboard**', { timeout: 60000 });
+        console.log('Başarıyla giriş yapıldı, dashboard yüklendi.');
+        await takeScreenshot(page, '05-after-login-dashboard');
 
-        // ... (Kodun geri kalanı tamamen aynı) ...
-        
-        console.log('2. Cozy Bedroom edit sayfasına direkt gidiliyor');
+        // 3. TEMPLATE SAYFASINA GİT
+        console.log('3. Cozy Bedroom edit sayfasına direkt gidiliyor');
         const templateURL = 'https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories';
         await page.goto(templateURL, { waitUntil: 'networkidle' });
-
         await page.waitForSelector('text="Upload product image"');
-        console.log('Template edit sayfası yüklendi');
-        await takeScreenshot(page, '04-cozy-bedroom-edit');
+        console.log('Template edit sayfası yüklendi.');
+        await takeScreenshot(page, '06-cozy-bedroom-edit');
 
-        console.log('3. Ürün görseli upload ediliyor');
+        // 4. GÖRSELİ YÜKLE
+        console.log('4. Ürün görseli indiriliyor ve upload ediliyor');
         const tempImagePath = '/tmp/product_image.jpg';
         await downloadImage(productImageUrl, tempImagePath);
         console.log('Görsel başarıyla indirildi:', tempImagePath);
@@ -113,40 +117,44 @@ async function createVideo() {
         await page.getByRole('button', { name: 'Upload product image' }).click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(tempImagePath);
-        console.log('Dosya seçme penceresi açıldı ve görsel seçildi');
 
-        await page.getByRole('button', { name: 'Got it!' }).click();
-        console.log('Görsel yüklendi ve popup kapatıldı');
-        await takeScreenshot(page, '05-after-upload');
+        // Bazen bir "Got it!" veya "Anladım" pop-up'ı çıkabilir, bunu kapatalım.
+        // Hata vermemesi için `catch` bloğu ekleyelim, eğer bu buton yoksa devam etsin.
+        try {
+            await page.getByRole('button', { name: 'Got it!' }).click({ timeout: 5000 });
+            console.log('Görsel yüklendi ve "Got it!" popup kapatıldı.');
+        } catch (e) {
+            console.log('Görsel yüklendi ("Got it!" popup bulunamadı, devam ediliyor).');
+        }
+        await takeScreenshot(page, '07-after-upload');
         
-        console.log('4. Ürün açıklaması giriliyor');
-        const descriptionInput = page.locator('textarea[placeholder*="Type your speech text"]');
-        await descriptionInput.waitFor({ state: 'visible' });
-        await descriptionInput.fill(productDescription);
-        console.log('Ürün açıklaması girildi');
-        await takeScreenshot(page, '06-after-description');
+        // 5. ÜRÜN AÇIKLAMASINI GİR
+        console.log('5. Ürün açıklaması giriliyor');
+        await page.locator('textarea[placeholder*="Type your speech text"]').fill(productDescription);
+        console.log('Ürün açıklaması girildi.');
+        await takeScreenshot(page, '08-after-description');
 
-        console.log('5. Dil Türkçe olarak ayarlanıyor');
-        await page.locator('button:has(span:text-matches("English", "i"))').click();
-        await page.waitForSelector('text=Turkish', { state: 'visible' });
-        await page.locator('text=Turkish').first().click();
-        console.log('Dil Türkçe olarak seçildi');
-        await takeScreenshot(page, '07-after-language');
+        // 6. DİLİ AYARLA
+        console.log('6. Dil Türkçe olarak ayarlanıyor');
+        await page.locator('button:has-text("English")').click();
+        await page.locator('div[role="dialog"] >> text=Turkish').click();
+        console.log('Dil Türkçe olarak seçildi.');
+        await takeScreenshot(page, '09-after-language');
 
-        console.log('6. Video oluşturma başlatılıyor');
+        // 7. VİDEOYU OLUŞTUR
+        console.log('7. Video oluşturma başlatılıyor');
         await page.getByRole('button', { name: 'Continue' }).click();
-        console.log('Continue butonuna tıklandı');
         
-        await page.waitForURL('**/history/**', { timeout: 60000 });
+        await page.waitForURL('**/history/**', { timeout: 90000 });
         console.log('Video oluşturma sayfasına yönlendirildi.');
-        await takeScreenshot(page, '08-final-state');
+        await takeScreenshot(page, '10-final-state');
         
         console.log('✅ Otomasyon başarıyla tamamlandı!');
 
     } catch (error) {
         console.error('❌ Hata oluştu:', error);
         await takeScreenshot(page, 'error-state');
-        throw error;
+        throw error; // Hata oluştuğunda workflow'un başarısız olması için hatayı tekrar fırlat
     } finally {
         await browser.close();
         console.log('Browser kapatıldı.');
