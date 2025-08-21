@@ -153,4 +153,4 @@ jobs:
         echo "3. 'Use' butonunu bulup tıklamayı unutmayın"
         echo "4. Upload sayfasına kadar ilerleyin"
         echo ""
-        echo "Debug için screenshot'ları kontrol edin."
+        echo "Debug için screenshot'ları kontrol edin." 
