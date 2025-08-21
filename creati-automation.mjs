@@ -98,33 +98,61 @@ async function createVideo() {
         await takeScreenshot(page, '01-main-page-loaded');
         console.log('Ana sayfa yüklendi.');
 
-        // 2. LOGIN AKIŞI
+        // 2. LOGIN AKIŞI - Güncellenmiş selector'lar
         await retry(page, async () => {
-            console.log('Login akışı başlatılıyor: "Go Create" butonuna tıklanacak...');
-            await page.getByRole('link', { name: /Go Create/i }).click();
-
-            console.log('"Continue with email" butonunun görünmesi bekleniyor...');
-            const continueWithEmailButton = page.getByRole('button', { name: /Continue with email/i });
-            await continueWithEmailButton.waitFor({ state: 'visible', timeout: 45000 });
+            console.log('Login akışı başlatılıyor...');
+            
+            // Sayfadaki "Continue with email" butonunu direkt bulmaya çalış
+            const emailButton = page.locator('text="Continue with email"').first();
+            await emailButton.waitFor({ state: 'visible', timeout: 30000 });
             
             console.log('"Continue with email" butonu bulundu. Tıklanıyor...');
-            await continueWithEmailButton.click();
+            await emailButton.click();
+            
+            // Login formunun açılmasını bekle
+            await page.waitForSelector('input[type="email"], input[placeholder*="email" i]', { timeout: 30000 });
         });
         
         console.log('✅ Login akışının ilk adımı başarıyla geçildi!');
         await takeScreenshot(page, '02-login-step1-passed');
 
-        // 3. EMAIL VE ŞİFRE GİRİŞİ
+        // 3. EMAIL VE ŞİFRE GİRİŞİ - Daha robust selector'lar
         console.log('Email ve Şifre alanları dolduruluyor...');
-        await page.locator('input[type="email"]').fill(email);
-        await page.locator('input[type="password"]').fill(password);
+        await retry(page, async () => {
+            // Email alanını bul
+            const emailInput = page.locator('input[type="email"], input[placeholder*="email" i], input[name*="email" i]').first();
+            await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+            await emailInput.fill(email);
+            
+            // Şifre alanını bul
+            const passwordInput = page.locator('input[type="password"], input[placeholder*="password" i], input[name*="password" i]').first();
+            await passwordInput.waitFor({ state: 'visible', timeout: 30000 });
+            await passwordInput.fill(password);
+        });
+        
         await takeScreenshot(page, '03-login-filled');
 
-        await page.getByRole('button', { name: /LOG IN\/SIGN UP/i }).click();
-        console.log('Login butonu tıklandı.');
+        // Login butonunu bul ve tıkla
+        await retry(page, async () => {
+            const loginButton = page.locator('button').filter({ hasText: /log in|sign in|continue|giriş/i }).first();
+            await loginButton.waitFor({ state: 'visible', timeout: 30000 });
+            await loginButton.click();
+            console.log('Login butonu tıklandı.');
+        });
 
-        await page.waitForURL('**/dashboard**', { timeout: 90000 });
-        console.log('Başarıyla giriş yapıldı, dashboard yüklendi.');
+        // Dashboard'a yönlendirilmeyi bekle
+        await retry(page, async () => {
+            // Birden fazla olası URL'yi kontrol et
+            await page.waitForFunction(() => {
+                const url = window.location.href;
+                return url.includes('dashboard') || 
+                       url.includes('workspace') || 
+                       url.includes('home') ||
+                       url.includes('create');
+            }, { timeout: 90000 });
+        });
+        
+        console.log('Başarıyla giriş yapıldı, ana sayfaya yönlendirildi.');
         await takeScreenshot(page, '04-after-login-dashboard');
 
         // 4. TEMPLATES'E GİT
