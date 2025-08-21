@@ -54,28 +54,34 @@ async function createVideo() {
     const page = await context.newPage();
     await page.setViewportSize({ width: 1920, height: 1080 });
     
-    page.setDefaultTimeout(60000);
+    page.setDefaultTimeout(60000); // Varsayılan zaman aşımı 60 saniye
 
     try {
         // 1. ANA SAYFAYA GİT
         console.log('1. Creati Studio ana sayfasına gidiliyor...');
-        await page.goto('https://www.creati.studio/', { waitUntil: 'networkidle' });
-        await takeScreenshot(page, '01-main-page');
+        await page.goto('https://www.creati.studio/', { waitUntil: 'domcontentloaded' });
+        await takeScreenshot(page, '01-main-page-loaded');
         console.log('Ana sayfa yüklendi.');
 
         console.log('"Go Create" butonu aranıyor ve tıklanıyor...');
         await page.getByRole('link', { name: /Go Create/i }).click();
         
-        // --- DOĞRU YÖNTEM: ÖNCE URL'NİN DEĞİŞMESİNİ BEKLE ---
-        console.log('Login sayfasının yüklenmesi için URL değişikliği bekleniyor...');
-        // URL'de "login" kelimesi geçene kadar bekle. En güvenilir yöntem bu.
-        await page.waitForURL('**/login**', { timeout: 30000 });
-        console.log('Login sayfasına başarıyla yönlendirildi.');
-        await takeScreenshot(page, '02-login-page-loaded');
+        // --- EN SAĞLAM YÖNTEM: GÖRDÜĞÜMÜZ BUTONU BEKLEMEK ---
+        console.log('Login sayfasının yüklenmesi ve "Continue with email" butonunun görünür olması bekleniyor...');
+        
+        // Önce sayfanın network aktivitesinin bitmesini bekleyelim, bu sayfanın "oturduğunu" gösterir.
+        await page.waitForLoadState('networkidle', { timeout: 30000 });
+        console.log('Sayfa network aktivitesi durdu. Şimdi buton aranacak.');
+        await takeScreenshot(page, '02-after-network-idle');
 
-        // 2. LOGIN İŞLEMİ (Artık sayfanın doğru olduğundan eminiz)
+        // Şimdi, ekranda olduğunu bildiğimiz butonu arayalım
+        const continueWithEmailButton = page.getByRole('button', { name: /Continue with email/i });
+        await continueWithEmailButton.waitFor({ state: 'visible', timeout: 30000 });
+        console.log('✅ "Continue with email" butonu başarıyla bulundu!');
+
+        // 2. LOGIN İŞLEMİ
         console.log('2. "Continue with email" butonuna tıklanıyor...');
-        await page.getByRole('button', { name: /Continue with email/i }).click();
+        await continueWithEmailButton.click();
         await takeScreenshot(page, '03-after-continue-with-email');
         
         console.log('Email ve Şifre alanları dolduruluyor...');
@@ -90,8 +96,8 @@ async function createVideo() {
         console.log('Başarıyla giriş yapıldı, dashboard yüklendi.');
         await takeScreenshot(page, '05-after-login-dashboard');
 
-        // ... (kodun geri kalanı tamamen aynı, değişiklik yok) ...
-
+        // ... (kodun geri kalanı tamamen aynı) ...
+        
         console.log('3. Cozy Bedroom edit sayfasına direkt gidiliyor');
         const templateURL = 'https://www.creati.studio/edit?label=CozyBedroom_icon_0801&parentLabel=Bags+%26+Accessories';
         await page.goto(templateURL, { waitUntil: 'networkidle' });
