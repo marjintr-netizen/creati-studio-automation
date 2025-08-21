@@ -1,122 +1,154 @@
-# Workflow'un adı
-name: Creati Studio Video Creator
+# Hibrit Creati AI Otomasyonu - N8N Entegrasyonu
+name: Creati AI Hybrid Automation
 
-# Workflow'un ne zaman tetikleneceğini belirler
 on:
   workflow_dispatch:
-    # Manuel çalıştırma sırasında kullanıcıdan istenecek girdiler
     inputs:
-      email:
-        description: 'Creati Studio Email'
-        required: true
-        type: string
       productDescription:
-        description: 'Product Description (Turkish)'
+        description: 'Ürün açıklaması (Google Sheets\'ten)'
         required: true
         type: string
       productImageUrl:
-        description: 'Product Image URL (from Margin website)'
+        description: 'Ürün görsel URL\'si (Google Sheets\'ten)'
         required: true
         type: string
+      email:
+        description: 'Creati Studio email'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [n8n-creati-trigger]
 
-# Workflow'un içereceği işler (jobs)
 jobs:
-  create-video:
-    # Job'un çalışacağı sanal makine tipi
+  hybrid-automation:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     
-    # Zaman aşımı süresi (maksimum 30 dakika)
-    timeout-minutes: 30
-    
-    # Job'un adımları (steps)
     steps:
-    # 1. Adım: Kod reposunu sanal makineye indirir
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    # 2. Adım: Node.js ortamını kurar
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         
-    # 3. Adım: Gerekli NPM paketlerini ve Playwright tarayıcısını kurar
-    - name: Install Dependencies and Browser
+    - name: Install Dependencies
       run: |
         npm init -y
         npm pkg set type=module
         npm install playwright
-        # --with-deps bayrağı, GitHub Actions ortamı için gerekli tüm sistem kütüphanelerini kurar
         npx playwright install --with-deps chromium
       
-    # 4. Adım: Input validation
+    - name: Extract inputs
+      run: |
+        if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+          echo "DESCRIPTION=${{ github.event.client_payload.productDescription }}" >> $GITHUB_ENV
+          echo "IMAGE_URL=${{ github.event.client_payload.productImageUrl }}" >> $GITHUB_ENV
+          echo "EMAIL=${{ github.event.client_payload.email }}" >> $GITHUB_ENV
+        else
+          echo "DESCRIPTION=${{ github.event.inputs.productDescription }}" >> $GITHUB_ENV
+          echo "IMAGE_URL=${{ github.event.inputs.productImageUrl }}" >> $GITHUB_ENV
+          echo "EMAIL=${{ github.event.inputs.email }}" >> $GITHUB_ENV
+        fi
+      
     - name: Validate inputs
       run: |
-        echo "Validating inputs..."
-        if [[ -z "${{ github.event.inputs.email }}" ]]; then
-          echo "❌ Email is required"
+        if [[ -z "$DESCRIPTION" ]] || [[ -z "$IMAGE_URL" ]] || [[ -z "$EMAIL" ]]; then
+          echo "Eksik input parametresi"
           exit 1
         fi
-        if [[ -z "${{ github.event.inputs.productDescription }}" ]]; then
-          echo "❌ Product description is required"
-          exit 1
-        fi
-        if [[ -z "${{ github.event.inputs.productImageUrl }}" ]]; then
-          echo "❌ Product image URL is required"
-          exit 1
-        fi
-        echo "✅ All inputs are valid"
+        echo "Inputs doğrulandı:"
+        echo "Açıklama uzunluğu: $(echo "$DESCRIPTION" | wc -c)"
+        echo "Görsel URL: $IMAGE_URL"
+        echo "Email: $EMAIL"
       
-    # 5. Adım: Otomasyon betiğini çalıştırır
-    - name: Run Creati Studio automation
+    - name: Automation Info
+      run: |
+        echo "HİBRİT OTOMASYON BAŞLIYOR"
+        echo "=========================="
+        echo "Bu otomasyon şu adımları içerir:"
+        echo "1. Otomatik login"
+        echo "2. Templates sayfasına git"  
+        echo "3. MANUEL: Template seçimi (90 saniye)"
+        echo "4. Otomatik: Upload + form + generate"
+        echo ""
+        echo "MANUEL ADIM NEDENİ:"
+        echo "Template seçimi en karmaşık kısım olduğu için"
+        echo "90 saniye manuel süre verilir. Bu sürede:"
+        echo "- Template seçin"
+        echo "- Use/Create butonuna basın"
+        echo "- Upload sayfasına ilerleyin"
+        echo ""
+      
+    - name: Run Hybrid Automation
       run: node creati-automation.mjs
       env:
-        # workflow_dispatch ile alınan girdileri ortam değişkeni olarak betiğe aktarıyoruz
-        EMAIL: ${{ github.event.inputs.email }}
-        # Şifre GitHub Secrets'tan güvenli bir şekilde alınıyor
+        EMAIL: ${{ env.EMAIL }}
         PASSWORD: ${{ secrets.CREATI_STUDIO_PASSWORD }}
-        DESCRIPTION: ${{ github.event.inputs.productDescription }}
-        IMAGE_URL: ${{ github.event.inputs.productImageUrl }}
-        # Debug için ek environment variables
-        DEBUG: 'true'
+        DESCRIPTION: ${{ env.DESCRIPTION }}
+        IMAGE_URL: ${{ env.IMAGE_URL }}
         PLAYWRIGHT_BROWSERS_PATH: '/home/runner/.cache/ms-playwright'
     
-    # 6. Adım: Başarı durumunda sonuçları kaydet
-    - name: Save success results
-      if: success()
-      run: |
-        echo "✅ Video creation process completed successfully!"
-        echo "Email: ${{ github.event.inputs.email }}"
-        echo "Description length: $(echo '${{ github.event.inputs.productDescription }}' | wc -c)"
-        echo "Image URL: ${{ github.event.inputs.productImageUrl }}"
-    
-    # 7. Adım: Hata ayıklama için oluşturulan dosyaları artifact olarak kaydet
     - name: Upload debug files
-      if: always()  # Her durumda çalış (başarı veya hata)
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: debug-files-${{ github.run_number }}
+        name: hibrit-debug-${{ github.run_number }}
         path: |
           *.png
           *.html
           *.log
-        retention-days: 7  # 7 gün sakla
+        retention-days: 5
         
-    # 8. Adım: Hata durumunda detaylı log
-    - name: Debug on failure
+    - name: Success notification
+      if: success()
+      run: |
+        echo "HİBRİT OTOMASYON BAŞARILI"
+        echo "Video oluşturma süreci başlatıldı"
+        
+        # n8n success webhook
+        if [[ -n "${{ secrets.N8N_SUCCESS_WEBHOOK }}" ]]; then
+          curl -X POST "${{ secrets.N8N_SUCCESS_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "status": "success",
+              "message": "Hibrit otomasyon başarılı",
+              "runId": "${{ github.run_number }}",
+              "productDescription": "'"$DESCRIPTION"'",
+              "imageUrl": "'"$IMAGE_URL"'",
+              "automationType": "hybrid"
+            }' || echo "Success webhook hatası"
+        fi
+          
+    - name: Failure notification  
       if: failure()
       run: |
-        echo "❌ Workflow failed. Debug information:"
-        echo "Runner OS: ${{ runner.os }}"
-        echo "Node version: $(node --version)"
-        echo "NPM version: $(npm --version)"
-        echo "Playwright version: $(npx playwright --version)"
+        echo "HİBRİT OTOMASYON BAŞARISIZ"
         
-        # Disk alanını kontrol et
-        df -h
-        
-        # Process listesi
-        ps aux | head -20
-        
-        # Network bağlantısını test et
-        ping -c 3 www.creati.studio || echo "Ping failed"
+        # n8n error webhook
+        if [[ -n "${{ secrets.N8N_ERROR_WEBHOOK }}" ]]; then
+          curl -X POST "${{ secrets.N8N_ERROR_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "status": "error", 
+              "message": "Hibrit otomasyon başarısız",
+              "runId": "${{ github.run_number }}",
+              "productDescription": "'"$DESCRIPTION"'",
+              "imageUrl": "'"$IMAGE_URL"'",
+              "automationType": "hybrid"
+            }' || echo "Error webhook hatası"
+        fi
+
+    - name: Manual Step Guidance
+      if: failure()
+      run: |
+        echo "MANUEL ADIM REHBERİ"
+        echo "==================="
+        echo "Eğer hata manuel adımda olduysa:"
+        echo "1. Daha fazla süre verin (90 saniye yeterli değilse)"
+        echo "2. Template seçimini hızlandırın"
+        echo "3. 'Use' butonunu bulup tıklamayı unutmayın"
+        echo "4. Upload sayfasına kadar ilerleyin"
+        echo ""
+        echo "Debug için screenshot'ları kontrol edin."
