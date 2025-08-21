@@ -1,1 +1,0 @@
-# creati-studio-automation
