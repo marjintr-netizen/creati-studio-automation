@@ -1,6 +1,10 @@
 import { chromium } from 'playwright';
-import https from 'https-proxy-agent';
+import https from 'https';
 import fs from 'fs';
+import { promisify } from 'util';
+import { pipeline } from 'stream';
+
+const streamPipeline = promisify(pipeline);
 
 // Ortam değişkenlerinden bilgileri al
 const email = process.env.EMAIL;
@@ -11,53 +15,81 @@ const productImageUrl = process.env.IMAGE_URL;
 console.log('Creati Studio automation başlatılıyor...');
 
 async function takeScreenshot(page, name) {
-    // ... (değişiklik yok)
+    try {
+        const filename = `${name}.png`;
+        await page.screenshot({ path: filename, fullPage: true });
+        console.log(`📸 Ekran görüntüsü alındı: ${filename}`);
+    } catch (error) {
+        console.log(`⚠️ Ekran görüntüsü alınamadı: ${error.message}`);
+    }
 }
 
-function downloadImage(url, filepath) {
-    // ... (değişiklik yok)
+async function downloadImage(url, filepath) {
+    return new Promise((resolve, reject) => {
+        console.log(`🔽 Görsel indiriliyor: ${url}`);
+        
+        https.get(url, (response) => {
+            if (response.statusCode === 200) {
+                const fileStream = fs.createWriteStream(filepath);
+                response.pipe(fileStream);
+                
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    console.log(`✅ Görsel başarıyla indirildi: ${filepath}`);
+                    resolve();
+                });
+                
+                fileStream.on('error', (err) => {
+                    console.error(`❌ Dosya yazma hatası: ${err.message}`);
+                    reject(err);
+                });
+            } else {
+                reject(new Error(`HTTP Error: ${response.statusCode}`));
+            }
+        }).on('error', (err) => {
+            console.error(`❌ İndirme hatası: ${err.message}`);
+            reject(err);
+        });
+    });
 }
 
-// --- YENİ: TEKRAR DENEME FONKSİYONU (BALYOZ) ---
+// TEKRAR DENEME FONKSİYONU
 async function retry(page, action, attempts = 3, delay = 5000) {
     for (let i = 0; i < attempts; i++) {
         try {
             console.log(`Deneme ${i + 1} / ${attempts}...`);
             await action();
             console.log(`✅ Deneme ${i + 1} başarılı!`);
-            return; // Başarılı olursa fonksiyondan çık
+            return;
         } catch (error) {
             console.log(`🔥 Deneme ${i + 1} başarısız oldu: ${error.message}`);
             if (i < attempts - 1) {
                 console.log(`${delay / 1000} saniye sonra yeniden denenecek.`);
                 await page.waitForTimeout(delay);
-                // Bir sonraki denemeden önce sayfayı yenilemek bazen işe yarar
                 console.log('Sayfa yenileniyor...');
                 await page.reload({ waitUntil: 'domcontentloaded' });
             } else {
                 console.log('Tüm denemeler başarısız oldu.');
-                throw error; // Son denemede de hata olursa, programı durdur
+                throw error;
             }
         }
     }
 }
 
-
 async function createVideo() {
     const browser = await chromium.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
     
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-      locale: 'en-US' 
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+        locale: 'en-US'
     });
     
     const page = await context.newPage();
     await page.setViewportSize({ width: 1920, height: 1080 });
-    
-    page.setDefaultTimeout(60000); // Varsayılan zaman aşımı 60 saniye
+    page.setDefaultTimeout(60000);
 
     try {
         // 1. ANA SAYFAYA GİT
@@ -66,7 +98,7 @@ async function createVideo() {
         await takeScreenshot(page, '01-main-page-loaded');
         console.log('Ana sayfa yüklendi.');
 
-        // --- SORUNLU ADIM İÇİN BALYOZ YÖNTEMİNİ KULLAN ---
+        // 2. LOGIN AKIŞI
         await retry(page, async () => {
             console.log('Login akışı başlatılıyor: "Go Create" butonuna tıklanacak...');
             await page.getByRole('link', { name: /Go Create/i }).click();
@@ -82,7 +114,7 @@ async function createVideo() {
         console.log('✅ Login akışının ilk adımı başarıyla geçildi!');
         await takeScreenshot(page, '02-login-step1-passed');
 
-        // 2. LOGIN İŞLEMİ DEVAMI
+        // 3. EMAIL VE ŞİFRE GİRİŞİ
         console.log('Email ve Şifre alanları dolduruluyor...');
         await page.locator('input[type="email"]').fill(email);
         await page.locator('input[type="password"]').fill(password);
@@ -94,20 +126,124 @@ async function createVideo() {
         await page.waitForURL('**/dashboard**', { timeout: 90000 });
         console.log('Başarıyla giriş yapıldı, dashboard yüklendi.');
         await takeScreenshot(page, '04-after-login-dashboard');
+
+        // 4. TEMPLATES'E GİT
+        console.log('4. Templates sayfasına gidiliyor...');
+        await retry(page, async () => {
+            // Templates linkini ara
+            const templatesLink = page.locator('a').filter({ hasText: /templates/i }).first();
+            await templatesLink.click();
+            
+            // Templates sayfasının yüklendiğini kontrol et
+            await page.waitForURL('**/templates**', { timeout: 30000 });
+        });
         
-        // ... (kodun geri kalanı tamamen aynı) ...
+        console.log('Templates sayfası yüklendi.');
+        await takeScreenshot(page, '05-templates-page');
+
+        // 5. COZY BEDROOM TEMPLATE'İNİ BUL
+        console.log('5. Cozy Bedroom template\'i aranıyor...');
+        await retry(page, async () => {
+            // Arama kutusunu bul ve "cozy bedroom" yaz
+            const searchInput = page.locator('input[placeholder*="search" i], input[type="search"]').first();
+            await searchInput.fill('cozy bedroom');
+            await page.waitForTimeout(2000); // Arama sonuçlarının yüklenmesini bekle
+            
+            // Cozy bedroom template'ini bul ve tıkla
+            const template = page.locator('.template-card, .template-item').filter({ hasText: /cozy bedroom/i }).first();
+            await template.waitFor({ state: 'visible', timeout: 30000 });
+            await template.click();
+        });
+        
+        console.log('Cozy Bedroom template\'i seçildi.');
+        await takeScreenshot(page, '06-template-selected');
+
+        // 6. MARGIN'DEN GÖRSEL İNDİR
+        console.log('6. Ürün görseli indiriliyor...');
+        const imagePath = './product-image.jpg';
+        await downloadImage(productImageUrl, imagePath);
+
+        // 7. UPLOAD PRODUCT IMAGE
+        console.log('7. Upload Product Image alanı aranıyor...');
+        await retry(page, async () => {
+            // Upload butonunu veya drag-drop alanını bul
+            const uploadArea = page.locator('input[type="file"], .upload-area, .drop-zone').first();
+            await uploadArea.waitFor({ state: 'visible', timeout: 30000 });
+            
+            // Dosyayı upload et
+            await uploadArea.setInputFiles(imagePath);
+            console.log('Görsel başarıyla yüklendi.');
+        });
+        
+        await takeScreenshot(page, '07-image-uploaded');
+
+        // 8. ÜRÜN AÇIKLAMASINI GİR
+        console.log('8. Ürün açıklaması giriliyor...');
+        await retry(page, async () => {
+            // "Type speech text" alanını bul
+            const textArea = page.locator('textarea, input[placeholder*="speech" i], input[placeholder*="text" i]').first();
+            await textArea.waitFor({ state: 'visible', timeout: 30000 });
+            await textArea.fill(productDescription);
+            console.log('Ürün açıklaması girildi.');
+        });
+
+        // 9. DİLİ TÜRKÇE YAP
+        console.log('9. Dil Türkçe olarak ayarlanıyor...');
+        await retry(page, async () => {
+            // Dil seçici dropdown'ını bul
+            const languageDropdown = page.locator('select[name*="language" i], .language-selector, .dropdown').first();
+            await languageDropdown.waitFor({ state: 'visible', timeout: 30000 });
+            
+            // Türkçe seçeneğini seç
+            await languageDropdown.selectOption({ label: 'Turkish' });
+            // Alternatif olarak value ile deneyebiliriz
+            // await languageDropdown.selectOption('tr');
+            console.log('Dil Türkçe olarak ayarlandı.');
+        });
+
+        await takeScreenshot(page, '08-form-completed');
+
+        // 10. CONTINUE'YA BAS VE SÜRECİ BİTİR
+        console.log('10. Continue butonuna tıklanarak süreç tamamlanıyor...');
+        await retry(page, async () => {
+            const continueButton = page.getByRole('button', { name: /continue/i });
+            await continueButton.waitFor({ state: 'visible', timeout: 30000 });
+            await continueButton.click();
+            
+            // Sürecin tamamlandığını kontrol et (success sayfası veya completion mesajı)
+            await page.waitForSelector('.success, .completed, .done', { timeout: 60000 });
+            console.log('✅ Video oluşturma süreci başarıyla tamamlandı!');
+        });
+
+        await takeScreenshot(page, '09-process-completed');
 
     } catch (error) {
         console.error('❌ Hata oluştu:', error);
         await takeScreenshot(page, 'error-state');
+        
+        // Hata durumunda sayfanın HTML'ini de kaydedelim
+        const html = await page.content();
+        fs.writeFileSync('error-page.html', html);
+        console.log('Hata sayfası HTML\'i kaydedildi: error-page.html');
+        
         throw error;
     } finally {
+        // Geçici dosyaları temizle
+        try {
+            if (fs.existsSync('./product-image.jpg')) {
+                fs.unlinkSync('./product-image.jpg');
+                console.log('Geçici görsel dosyası temizlendi.');
+            }
+        } catch (cleanupError) {
+            console.log('Temizleme hatası:', cleanupError.message);
+        }
+        
         await browser.close();
         console.log('Browser kapatıldı.');
     }
 }
 
-// downloadImage ve takeScreenshot fonksiyonlarını buraya ekle
-// ...
-
-createVideo();
+createVideo().catch(error => {
+    console.error('❌ Ana fonksiyon hatası:', error);
+    process.exit(1);
+});
